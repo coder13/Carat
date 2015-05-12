@@ -1,0 +1,11 @@
+{
+  "name": "carat",
+  "version": "0.1.1",
+  "description": "",
+  "main": "carat.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Caleb",
+  "license": "ISC"
+}

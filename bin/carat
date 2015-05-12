@@ -1,0 +1,12 @@
+#!/usr/bin/env node
+
+var yargs = require('yargs')
+	.usage('Usage: check <file> [options]')
+    .describe('v', 'Verbose flag. Will print all statements. Default is false.')
+    .describe('r', 'Recrusive flag. Will recursively check required files. Default is false.')
+    .describe('j', 'Will output as a tree. Default is true.')
+    .describe('d', 'debug flag. Will output the file and line of the code being checked when an error is thrown')
+    .alias('d', 'debug')
+    .showHelpOnFail(false);
+
+var Carat = require('../carat.js');

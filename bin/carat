@@ -1,12 +1,59 @@
 #!/usr/bin/env node
 
 var yargs = require('yargs')
-	.usage('Usage: check <file> [options]')
-    .describe('v', 'Verbose flag. Will print all statements. Default is false.')
-    .describe('r', 'Recrusive flag. Will recursively check required files. Default is false.')
-    .describe('j', 'Will output as a tree. Default is true.')
-    .describe('d', 'debug flag. Will output the file and line of the code being checked when an error is thrown')
+	.usage("Usage: check <file> [options]")
+    .describe('v', "Verbose flag. Will print all statements. Default is false.")
+    .describe('r', "Recrusive flag. Will recursively check required files. Default is false.")
+    .describe('d', "debug flag. Will output the file and line of the code being checked when an error is thrown")
     .alias('d', 'debug')
     .showHelpOnFail(false);
 
-var Carat = require('../carat.js');
+var carat = require('../carat.js'),
+	fs = require('fs'),
+	path = require('path'),
+	chalk = require('chalk'),
+	file = process.argv[2];
+
+if (!file) {
+	yargs.showHelp();
+	process.exit();
+}
+
+var args = yargs.argv;
+carat.flags({
+	debug: !!args.d,
+	verbose: !!args.v,
+	pretty: !!args.p
+});
+
+file = path.resolve(file);
+
+// if (!fs.existsSync(file)) {
+// 	console.error(file, "doesn't exist.");
+// 	process.exit(0);
+// } else if (!fs.lstatSync(file).isFile()) {
+// 	var pkgJson = require(file + '/package.json');
+// 	if (pkgJson.main) {
+// 		file += '/' + pkgJson.main;
+// 	}
+
+// 	if (!fs.existsSync(file)) {
+// 		console.error(file, "doesn't exist.");
+// 		process.exit(0);
+// 	} else if (!fs.lstatSync(file).isFile()) {
+// 		console.error(file, "is a directory.");
+// 		process.exit(0);
+// 	}
+// }
+
+fs.readFile(file, function (err, data) {
+	if (!err) {
+		file = path.relative(file.split('/').reverse().slice(1).reverse().join('/'), file);
+		var reports = carat.check(String(data), file);
+		if (reports.length != 0 && !carat.Flags.verbose) {
+			console.log(require('prettyjson').render(reports));
+		} else if (!carat.Flags.verbose) {
+			console.log(chalk.green('No vulneralbilities found'))
+		}
+	}
+});

@@ -1,5 +1,2 @@
-Rewrite Meta
-
-handle variables differently. 
-Improve 'custom' checking and implement callback syntax.
-Mark functions as sinks when it contains sinks.
+ - Flesh out callbacks more
+ - Improve tests

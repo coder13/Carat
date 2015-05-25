@@ -19,13 +19,15 @@ var Sinks = [
 var Sources = ['process.argv']
 
 module.exports.Flags = Flags = {
+	recursive: false,
 	debug: true,
 	verbose: false,
 	pretty: false
 }
 
 module.exports.flags = function (flags) {
-	Flags.debug = !!(flags.debug == undefined ? Flags : flags).debug || true;
+	Flags.recursive = !!(flags.recursive == undefined ? Flags : flags).recursive;
+	Flags.debug = !!(flags.debug == undefined ? Flags : flags).debug;
 	Flags.verbose = !!(flags.verbose == undefined ? Flags : flags).verbose;
 }
 
@@ -37,6 +39,7 @@ module.exports.check = function(code, file) {
 	var reports = [];
 
 	Scope = Scope(Flags, {Sinks: Sinks, Sources: Sources});
+
 	Scope.prototype.onReport = function (report) {
 		reports.push(report);
 	};

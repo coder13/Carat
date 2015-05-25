@@ -21,7 +21,8 @@ if (!file) {
 
 var args = yargs.argv;
 carat.flags({
-	debug: !!args.d,
+	recursive: !!args.r,
+	debug: !!args.d || true,
 	verbose: !!args.v,
 	pretty: !!args.p
 });

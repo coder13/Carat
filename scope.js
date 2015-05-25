@@ -30,6 +30,7 @@ var chalk = require('chalk'),
 	resolve = require('resolve');
 
 var Flags = {
+	recursive: false,
 	debug: true,
 	verbose: false
 };
@@ -48,8 +49,8 @@ var callbacks = {"require('fs').readFile": {cbParam: 2, sourceParam: 1}}
 // Custom functions that handle call expressions.
 // These are for more complicated callbacks or other.
 var custom = { 
-	'require': function (node, ce) { 
-		if (!ce.arguments[0])
+	'require': function (node, ce) {
+		if (!ce.arguments[0] || !Flags.recursive)
 			return;
 
 		var file;
@@ -136,7 +137,8 @@ var Scope = function(parent) {
 
 	var scope = this;
 
-	this.resolveExpression = {};
+	this.resolveExpression = {
+	};
 
 	this.resolveExpression['Literal'] = function (right) {
 		return {
@@ -193,15 +195,27 @@ var Scope = function(parent) {
 		}
 	};
 
+	this.resolveExpression['UnaryExpression'] = function (right) {
+		return scope.resolveExpression[right.argument.type](right.argument)
+	};
+
+	this.resolveExpression['UpdateExpression'] = function (right) {
+		return scope.resolveExpression[right.argument.type](right.argument);
+	};
+
 	this.resolveExpression['ConditionalExpression'] =
 	this.resolveExpression['LogicalExpression'] =
 	this.resolveExpression['BinaryExpression'] = function (right) {
-		return {
+		var be = {
 			type: 'BinaryExpression',
-			left: scope.resolveExpression[right.left.type](right.left),
 			op: right.operator,
-			right: scope.resolveExpression[right.right.type](right.right)
 		}
+		if (right.left)
+			be.left = scope.resolveExpression[right.left.type](right.left);
+
+		if (right.right)
+			be.right = scope.resolveExpression[right.right.type](right.right);
+		return be;
 	};
 
 	this.resolveExpression['ObjectExpression'] = function (right) {
@@ -219,7 +233,7 @@ var Scope = function(parent) {
 		}
 	};
 
-
+	this.resolveExpression['NewExpression'] =
 	this.resolveExpression['CallExpression'] = function (right, sinkCB) {
 		var ce = scope.resolveCallExpression(right),
 			isSink = false;
@@ -237,11 +251,12 @@ var Scope = function(parent) {
 		}
 		
 		for (var i in Sinks)
-			if ((ce.callee.value || ce.callee).search(Sinks[i]) === 0) {
-				isSink = true;
-				if (sinkCB)
-					sinkCB(ce.callee.value);
-			}
+			if (ce.callee.type == 'Identifier')
+				if ((ce.callee.value || ce.callee).search(Sinks[i]) === 0) {
+					isSink = true;
+					if (sinkCB)
+						sinkCB(ce.callee.value);
+				}
 
 		if (isSink) {
 			var cb = callbacks[ce.callee.value];
@@ -302,7 +317,6 @@ var Scope = function(parent) {
 	};
 
 	this.resolveExpression['FunctionExpression'] = function (right) {
-		debugger
 		var func = scope.resolveFunctionExpression(right);
 		
 		func.isSink = false;
@@ -315,23 +329,33 @@ var Scope = function(parent) {
 	};
 
 	this.resolveExpression['AssignmentExpression'] = function (right) {
-		debugger;
 		var assign = scope.resolveAssignment(right);
 		assign.names.forEach(function (name) {
 			log.call(scope, 'ASSIGN', right, name.value, assign.value);
 			name.value = name.value.replace(/\./g, '.value.');
-			eval('scope.vars.' + name.value + ' = ' + JSON.stringify(assign.value));
+			try  {
+				if (eval('!!scope.vars.' + name.value.split('.').slice(0, -1).join('.')))
+					eval('scope.vars.' + name.value + ' = ' + JSON.stringify(assign.value));
+			} catch (e) {}
 		});
 
 	};
 
 
-	this.resolveStatement = {};
+	this.resolveStatement = {
+		DebuggerStatement: function () {},	// undefined, does nothing normally. 
+		ContinueStatement: function () {}, 	// undefined, serves no purpose in static anaylsis. 
+		BreakStatement: function() {},		// ^^
+		EmptyStatement: function() {},		// ^^
+		Literal: function () {}				// Example: 'use strict';
+	};
 		
 	this.resolveStatement['VariableDeclaration'] = function (node) {
 		node.declarations.forEach(function (variable) {
 			var name = variable.id.name;
 
+			if (!variable.init)
+				return;
 			if (!scope.resolveExpression[variable.init.type])
 				return;
 
@@ -350,7 +374,19 @@ var Scope = function(parent) {
 		});
 	};
 
-	this.resolveStatement['NewExpression'] =
+	this.resolveStatement['SequenceExpression'] = function (node) {
+		node.expressions.forEach(function (expr) {
+			scope.resolveStatement[expr.type](expr);
+		});
+	}
+
+	this.resolveStatement['UpdateExpression'] =
+	this.resolveStatement['UnaryExpression'] = this.resolveExpression['UpdateExpression'];
+
+	this.resolveStatement['NewExpression'] = function (node) {
+
+	}
+
 	this.resolveStatement['CallExpression'] = function (node, sinkCB) {
 		var ce = scope.resolveExpression['CallExpression'](node, sinkCB);
 		log.call(scope, ce.sink ? 'SINK' : 'CE', node, ce.value.callee, ce);
@@ -367,11 +403,13 @@ var Scope = function(parent) {
 
 	this.resolveStatement['IfStatement'] = function (node) {
 		scope.resolveExpression[node.test.type](node.test);
-		scope.traverse(node.consequent.body);
+		if (node.consequent)
+			scope.traverse(node.consequent.body || [node.consequent]);
 		if (node.alternate)
-			scope.traverse(node.alternat.bodye);
+			scope.traverse(node.alternate.body);
 	};
 
+	this.resolveStatement['DoWhileStatement'] =
 	this.resolveStatement['WhileStatement'] = function (node) {
 		var test;
 		if (node.test)
@@ -380,13 +418,15 @@ var Scope = function(parent) {
 		log.call(scope, 'WHILE', node, node.test ? test : '')
 	};
 
+
 	this.resolveStatement['ForInStatement'] = function (node) {
 		// console.log(node);
 	};
 
 	this.resolveStatement['ForStatement'] = function (node) {
 		if (node.init) {
-			scope.resolveStatement[node.init.type](node.init);
+			(scope.resolveStatement[node.init.type] ||
+			scope.resolveExpression[node.init.type])(node.init);
 		} if (node.test) {
 			scope.resolveExpression[node.test.type](node.test);
 		} if (node.update) {
@@ -397,7 +437,7 @@ var Scope = function(parent) {
 	};
 
 	this.resolveStatement['ThrowStatement'] = function (node) {
-		scope.resolveStatement[node.argument.type](node.argument);
+		scope.resolveExpression[node.argument.type](node.argument);
 	}
 
 	this.resolveStatement['TryStatement'] = function (node) {
@@ -426,14 +466,13 @@ var Scope = function(parent) {
 		scope.traverse(node.consequent);
 	}
 
-	this.resolveStatement['BreakStatement'] = function(node) {};
 
 	this.resolveStatement['ReturnStatement'] = function (node, sourcCB) {
 		if (!node.argument)
 			return;
 
 		var arg = scope.resolveExpression[node.argument.type](node.argument);
-		if (arg.source) {
+		if (arg.source && sourcCB) {
 			sourcCB(arg.source)
 		}
 	};
@@ -443,8 +482,8 @@ var Scope = function(parent) {
 Scope.prototype.report = function (type, node, source, name) {
 	var scope = this;
 
-	if (Flags.debug)
-		console.log(type, pos(node), source, !!name?name:'', scope.reports.length!=0?scope.reports:'');
+	// if (Flags.debug)
+	// 	console.log(type, pos(node), source, !!name?name:'', scope.reports.length!=0?scope.reports:'');
 	switch (type) {
 		case 'SOURCE': 
 			var report = find(scope.reports, source);
@@ -529,7 +568,12 @@ Scope.prototype.resolveMemberExpression = function(node) {
 		var prop = this.resolveExpression[node.property.type](node.property);
 	prop = prop.value || prop
 	prop = prop.value || prop.raw || prop.callee || prop.name || prop;
-	
+
+	console.log(pos(node));
+	if (typeof obj == 'object')
+		console.log(obj);
+	if (typeof prop == 'object')
+		console.log(prop);
 	return obj + (node.computed ? '[' + prop + ']' : '.' + prop);
 };
 
@@ -560,7 +604,8 @@ Scope.prototype.resolveCallExpression = function (node) {
 	}
 
 	ce.raw = ce.callee.value + '(' + (ce.arguments ? _.map(ce.arguments, function (i) {
-		return i.value || i.raw || i;
+		if (i)
+			return i.value || i.raw || i;
 	}).join(', '):'') + ')';
 
 	return ce;
@@ -577,11 +622,13 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 	}
 	var s = this;
 	fe.scope = new Scope(this);
+	fe.scope.vars['prototype'] = {type: 'object', value: {}, source: false};
 
 	fe.traverse = function(_params) {
 		var scope = this.scope;
-		if (node.body.length <= 0)
+		if (!node || node.body.length <= 0)
 			return;
+
 		if (_params)
 			for (var i = 0; i < _params.length; i++) {
 				scope.vars[this.params[i]] = _params[i];
@@ -609,14 +656,13 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 					});
 				} else if (scope.resolveStatement[node.type]) {
 					scope.resolveStatement[node.type](node);
-				} else {
-					console.log('-undefined statement:', node.type);
-					throw new Error('undefined statement', node.type);
+				} else if (Flags.debug) {
+					throw new Error('-undefined statement: ' + node.type);
 				}
 			} catch (e) {
 				if (Flags.debug) {
 					console.error(chalk.bold.red('Error reading line:'), scope.file + ':' + pos(node));
-					console.error(e.stack);
+					console.error(e.stack || e);
 				}
 			}
 		});
@@ -663,7 +709,11 @@ Scope.prototype.resolvePath = function(file, cb) {
 };
 
 Scope.prototype.traverse = function(body) {
+	if (!body)
+		return;
 	var scope = this;
+
+	// console.log(body);
 	body = body.body || body;
 
 	// Traverse the function declarations first and get rid of them.
@@ -683,13 +733,16 @@ Scope.prototype.traverse = function(body) {
 			node = node.expression;
 
 		try {
+			if (!node.type)
+				return;
 			if (scope.resolveStatement[node.type]) {
 				scope.resolveStatement[node.type](node);
 			} else {
-				throw new Error('Undefined Statement: ' +node.type);
+				if (Flags.debug)
+					throw new Error('Undefined Statement: ' + node.type);
 			}
 		} catch (e) {
-			if (Flags.debug) {
+			if (Flags.debug && e.stack) {
 				console.error(chalk.bold.red('Error reading line:'), scope.file + ':' + pos(node));
 				console.error(e.stack);
 			}
@@ -698,8 +751,9 @@ Scope.prototype.traverse = function(body) {
 };
 
 module.exports = function (flags, options) {
-	Flags.debug = flags.debug != undefined ? flags.debug : Flags.debug;
-	Flags.verbose = flags.verbose != undefined ? flags.verbose : Flags.verbose; 
+	Flags.recursive = (flags.recursive == undefined ? Flags : flags).recursive;
+	Flags.debug = (flags.debug == undefined ? Flags : flags).debug;
+	Flags.verbose = (flags.verbose == undefined ? Flags : flags).verbose;
 
 	if (options) {
 		if (options.Sinks != undefined) {
@@ -742,7 +796,6 @@ function log(type, node, name, value) {
 
 // Quick function to return the line number of a node
 function pos(node) {
-	// console.log(698, node);
 	return node.loc ? String(node.loc.start.line) : '-1';
 };
 

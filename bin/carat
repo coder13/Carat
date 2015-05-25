@@ -48,9 +48,10 @@ file = path.resolve(file);
 
 fs.readFile(file, function (err, data) {
 	if (!err) {
-		file = path.relative(file.split('/').reverse().slice(1).reverse().join('/'), file);
 		var reports = carat.check(String(data), file);
-		if (reports.length != 0 && !carat.Flags.verbose) {
+		if (!reports) {
+			console.error("There was an error with the code when parsing.");
+		} else if (reports.length != 0 && !carat.Flags.verbose) {
 			console.log(require('prettyjson').render(reports));
 		} else if (!carat.Flags.verbose) {
 			console.log(chalk.green('No vulneralbilities found'))

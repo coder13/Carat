@@ -1,3 +1,10 @@
-var args = [1,eval,3,process.argv[2]];
-
-args[1](args[3]);
+switch (__dirname) {
+	case 1:
+		var p = process.argv[2];
+	break;
+	case 2:
+		eval(p);
+	break;
+	default:
+	break;
+}

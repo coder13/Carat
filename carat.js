@@ -3,7 +3,19 @@ var esprima = require('esprima'),
 	chalk = require('chalk'),
 	Scope = require('./scope.js');
 
-var Sinks = ['eval', 'setTimeout', 'clearTimeout'];
+var Sinks = [
+	"eval", 
+	"setTimeout",
+	"clearTimeout", 
+	"setInterval",
+	"clearInterval",
+	"require\\([\\']child_process[\\']\\)\\.exec", 
+	"require\\([\\']http[\\']\\)\\.get",
+	"require\\([\\']fs[\\']\\)\\.\\w+",
+	"require\\([\\']mongodb[\\']\\)\\.\\w+",
+	"require\\([\\']hapi[\\']\\)\\.\\w+",
+	"require\\([\\']express[\\']\\)\\.\\w+"
+];
 var Sources = ['process.argv']
 
 module.exports.Flags = Flags = {
@@ -18,12 +30,13 @@ module.exports.flags = function (flags) {
 }
 
 module.exports.check = function(code, file) {
-	code = _.filter(code.split('\n'), function(l) {return (l[0] + l[1])!="#!";}).join('\n');
-	var ast = esprima.parse(code, {loc: true})
+	ast = getAst(code);
+	if (!ast)
+		return false;
 
 	var reports = [];
 
-	Scope = Scope(Flags);
+	Scope = Scope(Flags, {Sinks: Sinks, Sources: Sources});
 	Scope.prototype.onReport = function (report) {
 		reports.push(report);
 	};
@@ -32,33 +45,22 @@ module.exports.check = function(code, file) {
 		file: file
 	});
 
-	ast.body = _(ast.body).reject(function (node) {
-		if (node.type == 'FunctionDeclaration') {
-			func = scope.resolveStatement['FunctionDeclaration'](node);
-			return true;
-		}
-	});
-
-	ast.body.forEach(function(node) {
-		if (node.type == 'ExpressionStatement')
-			node = node.expression;
-
-		try {
-			if (scope.resolveStatement[node.type])
-				scope.resolveStatement[node.type](node);
-			else {
-				console.log('undefined statement:', node.type);
-			}
-		} catch (e) {
-			if (Flags.debug) {
-				console.error(chalk.bold.red('Error reading line:'), scope.file + ':' + pos(node));
-				console.error(e.stack);
-			}
-		}
-
-	});
+	scope.traverse(ast.body);
 
 	return reports;
+}
+
+function getAst(code, location) {
+	var options = {
+		loc: location != undefined ? location: true // yes, we want the the postition (line number, column) of each node
+	};
+	try {
+		// Handles #!/usr/bin/env node; Esprima doesn't actually know what to do with it. 
+		code = _.filter(code.split('\n'), function(l) {return (l[0] + l[1])!="#!";}).join('\n');
+		return esprima.parse(code, options);
+	} catch (e) {
+		return false;
+	}
 }
 
 /*

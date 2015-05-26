@@ -4,7 +4,8 @@
   "description": "",
   "main": "carat.js",
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "carat": "bin/carat"
   },
   "author": "Caleb",
   "license": "ISC",

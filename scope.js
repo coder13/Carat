@@ -129,6 +129,7 @@ var Scope = function(parent) {
 	else if (!this.vars.module.value.exports) this.vars.module.value.exports = {type: 'object', value: {}};
 	if (!this.vars.exports) this.vars.exports = this.vars.module.value.exports;
 	if (!this.vars.global) this.vars.global = {type: 'object'};
+	this.vars.this = this.vars;
 	
 	this.sources = parent.sources || Sources;
 	this.sinks = parent.sinks || Sinks;
@@ -177,7 +178,11 @@ var Scope = function(parent) {
 	};
 
 	this.resolveExpression['ThisExpression'] = function (right) {
-		return scope;
+		return {
+			type: 'Identifier',
+			value: 'this',
+			source: false
+		};
 	};
 
 	this.resolveExpression['ArrayExpression'] = function (right) {
@@ -203,7 +208,19 @@ var Scope = function(parent) {
 		return scope.resolveExpression[right.argument.type](right.argument);
 	};
 
-	this.resolveExpression['ConditionalExpression'] =
+	this.resolveExpression['ConditionalExpression'] = function (right) {
+		var ce = {
+			type: 'ConditionalExpression',
+			test: scope.resolveExpression[right.test.type](right.test)
+		}
+		if (right.consequent) {
+			ce.consequent = scope.resolveExpression[right.consequent.type](right.consequent);
+		} else if (right.alternate) {
+			ce.alternate = scope.resolveExpression[right.alternate.type](right.alternate)
+		}
+		return ce;
+	};
+
 	this.resolveExpression['LogicalExpression'] =
 	this.resolveExpression['BinaryExpression'] = function (right) {
 		var be = {
@@ -475,6 +492,8 @@ var Scope = function(parent) {
 		if (arg.source && sourcCB) {
 			sourcCB(arg.source)
 		}
+
+		log.call(scope, 'RETURN', node, '', arg);
 	};
 
 };
@@ -569,11 +588,6 @@ Scope.prototype.resolveMemberExpression = function(node) {
 	prop = prop.value || prop
 	prop = prop.value || prop.raw || prop.callee || prop.name || prop;
 
-	console.log(pos(node));
-	if (typeof obj == 'object')
-		console.log(obj);
-	if (typeof prop == 'object')
-		console.log(prop);
 	return obj + (node.computed ? '[' + prop + ']' : '.' + prop);
 };
 
@@ -646,6 +660,7 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 				node = node.expression;
 
 			try {
+
 				if (node.type == 'CallExpression') {
 					scope.resolveStatement['CallExpression'](node, function (sink) {
 						this.sink = true;
@@ -773,13 +788,11 @@ module.exports = function (flags, options) {
 */
 
 var cs = { // colors
-	'BE': chalk.green,
 	'CE': chalk.green,
 	'SCE': chalk.red,
 	'SINK': chalk.red,
 	'SOURCE': chalk.red,
-	'SOURCES': chalk.yellow,
-	'RETURN': chalk.red
+	'RETURN': chalk.green
 };
 
 function log(type, node, name, value) {
@@ -789,9 +802,10 @@ function log(type, node, name, value) {
 	if (Scope.baseFile)
 		p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) + ':' + p;
 
+	var v = value.value ? (value.value.raw || value.value) : (value.raw || value);
 	console.log(Array(this.depth||1).join('-'), cs[type] ? cs[type]('[' + type + ']') : chalk.blue('[' + type + ']'),
-				chalk.bold.grey(p), name, 
-				value ? (chalk.bold.green(value.type) + ': ' + chalk.white(value.value.raw || value.value)) : '');
+				chalk.bold.grey(p), name.value||name,
+				value ? (chalk.bold.green(value.type) + ': ' + chalk.white(v)) : '');
 }
 
 // Quick function to return the line number of a node

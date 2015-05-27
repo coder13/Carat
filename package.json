@@ -5,7 +5,7 @@
   "main": "carat.js",
   "scripts": {
     "test": "mocha",
-    "carat": "bin/carat"
+    "carat": "./bin/carat"
   },
   "author": "Caleb",
   "license": "ISC",

@@ -43,7 +43,7 @@ module.exports.check = function(code, file) {
 	Scope.prototype.onReport = function (report) {
 		reports.push(report);
 	};
-	
+
 	var scope = new Scope({
 		file: file
 	});
@@ -59,9 +59,11 @@ function getAst(code, location) {
 	};
 	try {
 		// Handles #!/usr/bin/env node; Esprima doesn't actually know what to do with it. 
-		code = _.filter(code.split('\n'), function(l) {return (l[0] + l[1])!="#!";}).join('\n');
+		code = code.replace(/^\#\!/, '//');
+
 		return esprima.parse(code, options);
 	} catch (e) {
+		console.error("There was an error with the code when parsing.");
 		return false;
 	}
 }

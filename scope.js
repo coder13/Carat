@@ -1,5 +1,4 @@
 /* Overall Design Theory:
-
 	- Parse code using Esprima
 	- Handle Each statement at a time
 	- Statments handle expressions and the two are sometimes similar.
@@ -10,7 +9,7 @@
 		- Or the name references a function and that function should be ran using the given function's arguments as parameters. 
 	- Expressions:
 		- All expressions will have a type, value and source properities. 
-		- An Object's type will be 'object' and it's value will be an object containing it's children. 
+		- An Object's type will be 'Object' and it's value will be an object containing it's children. 
 			- If you want module.exports, you will do module.value.exports. 
 			- This way, an object can be parsed that has 'type' or 'source' as it's children
 
@@ -20,6 +19,7 @@
 		Has a sink property contain the name of the sink and its line number and file it was executed.
 		Also has a chain property which is a list of all the statements that affected it. 
 
+db.json
 */
 
 var chalk = require('chalk'),
@@ -42,71 +42,118 @@ var Sinks = ['eval'];			// default list of sinks
 // possibly traverse with different argumements multiple times. 
 var lookupTable = {};
 
+// todo callbacks and custom: have each be an object containging a name (regex) and the function handler (or another object)
+// combine functionality of both. good idea?
+
 // List of CallExpressions that have evil callbacks.
 // cbParam is where the callback is and sourceParam is the argument in the callback that is the source
 var callbacks = {"require('fs').readFile": {cbParam: 2, sourceParam: 1}}
 
 // Custom functions that handle call expressions.
 // These are for more complicated callbacks or other.
-var custom = { 
-	'require': function (node, ce) {
-		if (!ce.arguments[0] || !Flags.recursive)
-			return;
+var custom = [
+	{	name: "^require$",
+		handler: function (node, ce) {
+			// Get file
+			var file;
+			var scope = this;
+			
+			if (node.arguments[0].type == 'Literal') {
+				file = node.arguments[0].value;
+			} else if (node.arguments[0].type == 'Identifier') {
+				file = this.resolve(node.arguments[0].name).value;
+				if (typeof file != 'string')
+					return undefined;
+			} else
+				return undefined;
 
-		var file;
-		if (node.arguments[0].type == 'Literal') {
-			file = node.arguments[0].value;
-		} else if (node.arguments[0].type == 'Identifier') {
-			file = this.resolve(node.arguments[0].name).value;
-			if (typeof file != 'string')
-				return;
-		} else
-			return;
+			if (file.match('.*.json')) {
+				var rtrn;
+				this.resolvePath(file, function (json) {
+					json = require(json);
 
-		if (['hapi', 'express', 'jade'].indexOf(file) != -1 || file.indexOf('hapi') != -1)
-			return; // just ignore these things. They have prewritten handlers anyways.
-
-		var scope = this;
-		var r;
-		this.resolvePath(file, function (pkg) {
-			if (!pkg)
-				return;
-
-			// Lookup table is a list of files already looked at.
-			// In static analysis, we only want to look at each file once.
-			if (lookupTable[pkg])
-				return;
-			lookupTable[pkg] = true;
-			code = fs.readFileSync(pkg);
-			if (code) {
-				var ast = esprima.parse(String(code), {loc: true});
-				if (!ast)
-					return;
-				if (Flags.verbose && !Flags.json)
-					console.log(chalk.yellow(' ---- '), pkg);
-
-				var newScope = new Scope({
-					file: pkg,
-				});
-				newScope.traverse(ast);
-
-				if (newScope.vars.module) {
-					r = newScope.vars.module.value.exports;
-
-					if (Flags.json) {
-						scope.reports.push(newScope.reports);
+					var resolveJSON = function (j) {
+						var newJson = {};
+						for (var i in j) {
+							newJson[i] = {
+								value: typeof j[i] == 'Object' ? resolveJSON(j[i]) : j[i]
+							}
+						}
+						return newJson;
 					}
-						
-				} else
-					if (Flags.verbose && !flags.json)
-						console.log(chalk.yellow(' ---- '), chalk.red(pkg));
+
+					rtrn = resolveJSON(json);
+				});
+				return rtrn;
 			}
 
-		});
+			// Won't load modules. Do want to load
+			if (!ce.arguments || !ce.arguments[0] || !Flags.recursive)
+				return;
 
-		return r;
+			var r;
+			this.resolvePath(file, function (pkg) {
+				if (!pkg)
+					return;
+
+				// Lookup table is a list of files already looked at.
+				// In static analysis, we only want to look at each file once.
+				if (lookupTable[pkg])
+					return;
+				lookupTable[pkg] = true;
+				code = fs.readFileSync(pkg);
+				if (code) {
+					var ast = esprima.parse(String(code), {loc: true});
+					if (!ast)
+						return;
+					if (Flags.verbose && !Flags.json)
+						console.log(chalk.yellow(' ---- '), pkg);
+
+					var newScope = new Scope({
+						file: pkg,
+					});
+					newScope.traverse(ast);
+
+					if (newScope.vars.module) {
+						r = newScope.vars.module.value.exports;
+
+						if (Flags.json) {
+							scope.reports.push(newScope.reports);
+						}
+							
+					} else
+						if (Flags.verbose && !flags.json)
+							console.log(chalk.yellow(' ---- '), chalk.red(pkg));
+				}
+
+			});
+
+			return r;
+		}
+	},
+	{	name: "^require\\(\'hapi\'\\).Server\\(.*?\\).route$", // (new require('hapi').server()).route()
+		handler: function (node, ce) {
+			var func;
+			if (ce.arguments[0].value.config && ce.arguments[0].value.config.value.handler) {
+				func = ce.arguments[0].value.config.value.handler;
+			} else {
+				func = ce.arguments[0].value.handler;
+			}
+
+			if (!func || !func.scope)
+				return;
+			params = _.map(func.params, function (i) {
+				return {type: 'Identifier', value: i, source: false};
+			});
+
+			params[0].source = true;
+			log.call(func.scope, 'SOURCE', node, func.params[0]);
+			func.scope.report('SOURCE', node, func.params[0]);
+
+			func.traverse.call(func, params);
+		}
 	}
-};
+];
 
 var Scope = function(parent) {
 	parent = parent || {};
@@ -122,19 +169,25 @@ var Scope = function(parent) {
 	if (!Scope.baseFile) 
 		Scope.baseFile = parent.file;
 
-	this.file = Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file):'';
+	// this.file = Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file):'';
+	this.file = parent.file;
 
 	this.vars = parent.vars || {};
-	if (!this.vars.module) this.vars.module = {type: 'object', value: {exports: {type: 'object', value: {}}}};
-	else if (!this.vars.module.value.exports) this.vars.module.value.exports = {type: 'object', value: {}};
+	if (!this.vars.module) this.vars.module = {type: 'Object', value: {exports: {type: 'Object', value: {}}}};
+	else if (!this.vars.module.value.exports) this.vars.module.value.exports = {type: 'Object', value: {}};
 	if (!this.vars.exports) this.vars.exports = this.vars.module.value.exports;
-	if (!this.vars.global) this.vars.global = {type: 'object'};
+	if (!this.vars.global) this.vars.global = {type: 'Object'};
 	this.vars.this = this.vars;
 	
 	this.sources = parent.sources || Sources;
 	this.sinks = parent.sinks || Sinks;
 	
-	this.reports = parent.reports || [];
+	this.reports = [];
+	if (parent.reports) {
+		parent.reports.forEach(function (i) {
+			this.reports.push(i);
+		});
+	}
 
 	var scope = this;
 
@@ -151,7 +204,9 @@ var Scope = function(parent) {
 
 	this.resolveExpression['Identifier'] = function (right, resolve) {
 		var resolved = scope.resolve(right.name);
-		if ((resolved === right.name || (resolve != undefined && !resolve))) {
+		// resolve right if resolved is undefined or is exactly right.name (implying that right doesn't exist in vars)
+		// resolve is false (meaning we don't want the resolved value)
+		if ((resolve == undefined || resolved === right.name) || resolve) {
 			var isSource = false;
 			
 			for (var i in Sources) {
@@ -189,8 +244,9 @@ var Scope = function(parent) {
 		var elements = right.elements;
 		elements = _.map(right.elements, function (i) {
 			var expr = scope.resolveExpression[i.type](i, false);
-			if (expr.source)
+			if (expr.source) {
 				scope.report('SOURCE', right, expr.value);
+			}
 			return expr;
 		});
 
@@ -226,12 +282,14 @@ var Scope = function(parent) {
 		var be = {
 			type: 'BinaryExpression',
 			op: right.operator,
+			source: false
 		}
 		if (right.left)
 			be.left = scope.resolveExpression[right.left.type](right.left);
 
 		if (right.right)
 			be.right = scope.resolveExpression[right.right.type](right.right);
+
 		return be;
 	};
 
@@ -239,13 +297,14 @@ var Scope = function(parent) {
 		var obj = {};
 		right.properties.forEach(function(i) {
 			var expr = scope.resolveExpression[i.value.type](i.value);
-			if (expr.source)
+			if (expr.source) {
 				scope.report('SOURCE', right, expr.value);
+			}
 			obj[i.key.name] = expr;
 			
 		});
 		return {
-			type: 'object',
+			type: 'Object',
 			value: obj
 		}
 	};
@@ -259,23 +318,37 @@ var Scope = function(parent) {
 		if (resolved && resolved != ce.callee && resolved != ce.callee.value)
 			ce.callee = scope.resolve(ce.callee.value);
 		
+		// Handles the callee. If it's a function, traverse the function with the given parameters
+		// If it's simply the name of a function, handle it normally. 
 		if (ce.callee.type == 'Function') {	
 			ce.callee.traverse(ce.arguments);
-		} else if (custom[ce.callee.value]) {
-			if (r = custom[ce.callee.value].call(scope, right, ce)) {
-				return r;
-			}
+		} else if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
+			var rtrn;
+			_(custom).some(function (i) {
+				if (ce.callee.value.match(i.name)) {
+					rtrn = i.handler.call(scope, right, ce);
+					return true;
+				}
+			});
+			if (rtrn)
+				return rtrn;
 		}
 		
-		for (var i in Sinks)
-			if (ce.callee.type == 'Identifier')
-				if ((ce.callee.value || ce.callee).search(Sinks[i]) === 0) {
+		if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
+			for (var i in Sinks) {
+				if (ce.callee.value.search(Sinks[i]) === 0) {
 					isSink = true;
+					// If sinkCB is defined, this call expression is inside of a function.
+					// We want the function to know that there is a sink inside of it
+					// and to have it mark itself as a sink.
 					if (sinkCB)
 						sinkCB(ce.callee.value);
 				}
+			}
+		}
 
 		if (isSink) {
+			// Handles simple callbacks containing parameters that are sources
 			var cb = callbacks[ce.callee.value];
 			if (cb) {
 				var func = ce.arguments[cb.cbParam];
@@ -289,12 +362,25 @@ var Scope = function(parent) {
 				func.traverse.call(func, params);
 			}
 
-			ce.arguments.forEach(function (arg) {
-				if (scope.resolve(arg.value))
-					arg = scope.resolve(arg.value);
-	
+			if (!ce.arguments || ce.arguments.length == 0) {
+				return;
+			}
+
+			// For each argument of the function, if it is a Source and ce is a Sink, report the sink.
+			ce.arguments.forEach(function handleArg(arg) {
+
+				if (arg.type == 'BinaryExpression' || arg.type == 'ConditionalExpression') {
+					handleArg(arg.left);
+					handleArg(arg.right);
+				}
+
 				if (arg.type != 'Identifier' && arg.type != 'MemberExpression')
 					return;
+
+				var resolved = scope.resolve(arg.value);
+				if (resolved && resolved !== arg.value)
+					arg = resolved;
+				
 				if (scope.resolve(arg.value).value)
 					arg = scope.resolve(arg.value);
 				if (arg.source) {
@@ -315,13 +401,19 @@ var Scope = function(parent) {
 
 	this.resolveExpression['MemberExpression'] = function (right) {
 		var me = scope.resolveMemberExpression(right),
-			isSource = true;
+			isSource = false;
 
+		// todo: make better. Awful hack for now
 		for (var i in Sources) {
+			split = me.split('.')[0];
 			if (me.indexOf(i + '.') === 0 ||
 				me.indexOf(i + '(') === 0 ||
 				me.indexOf(i + '[') === 0 ||
-				me == i) {
+				me == i || scope.vars[split]?scope.vars[split].source:false ||
+				split.indexOf(i + '.') === 0 ||
+				split.indexOf(i + '(') === 0 ||
+				split.indexOf(i + '[') === 0 ||
+				split == i) {
 				isSource = true;
 			}
 		}
@@ -338,9 +430,15 @@ var Scope = function(parent) {
 		
 		func.isSink = false;
 
-		func.traverse();
+		func.traverse(_.map(func.params, function (i) {
+			return {
+				type: 'Identifier',
+				value: i,
+				source: false
+			};
+		}));
 
-		func.type = 'function';
+		func.type = 'Function';
 
 		return func;
 	};
@@ -349,8 +447,13 @@ var Scope = function(parent) {
 		var assign = scope.resolveAssignment(right);
 		assign.names.forEach(function (name) {
 			log.call(scope, 'ASSIGN', right, name.value, assign.value);
-			name.value = name.value.replace(/\./g, '.value.');
+			
+			if (name.type == 'MemberExpression') {
+				
+			}
+
 			try  {
+				name.value = name.value.replace(/\./g, '.value.');
 				if (eval('!!scope.vars.' + name.value.split('.').slice(0, -1).join('.')))
 					eval('scope.vars.' + name.value + ' = ' + JSON.stringify(assign.value));
 			} catch (e) {}
@@ -406,7 +509,9 @@ var Scope = function(parent) {
 
 	this.resolveStatement['CallExpression'] = function (node, sinkCB) {
 		var ce = scope.resolveExpression['CallExpression'](node, sinkCB);
-		log.call(scope, ce.sink ? 'SINK' : 'CE', node, ce.value.callee, ce);
+
+		if (ce.type == 'CallExpression')
+			log.call(scope, ce.sink ? 'SINK' : 'CE', node, ce.value.callee, ce);
 	};
 
 	this.resolveStatement['AssignmentExpression'] = this.resolveExpression['AssignmentExpression'];
@@ -501,8 +606,8 @@ var Scope = function(parent) {
 Scope.prototype.report = function (type, node, source, name) {
 	var scope = this;
 
-	// if (Flags.debug)
-	// 	console.log(type, pos(node), source, !!name?name:'', scope.reports.length!=0?scope.reports:'');
+	if (Flags.debug)
+		console.log(chalk.red(type), chalk.grey(this.pos(node)), chalk.blue(source.value||source), !!name?name:'\t', scope.reports.length!=0?scope.reports:'N/A');
 	switch (type) {
 		case 'SOURCE': 
 			var report = find(scope.reports, source);
@@ -519,7 +624,6 @@ Scope.prototype.report = function (type, node, source, name) {
 			}
 			return false;
 		case 'SINK':
-
 			report = find(scope.reports, source);
 			
 			if (report) {
@@ -543,6 +647,7 @@ Scope.prototype.onReport = function () {};
 // returns a value for a variable if one exists
 // if a = b
 // resolve(a) will result in b
+// TODO: IMRPOVE!!
 Scope.prototype.resolve = function(name) {
 	if (!name || typeof name != 'string')
 		return name;
@@ -558,7 +663,11 @@ Scope.prototype.resolve = function(name) {
 			
 			var r = this.resolve(s.slice(0,-1).join('.'));
 			r = r.value.raw || r.value;
-			return r + '.' + s.slice(-1);
+			return {
+				type: 'MemberExpression', 
+				value: r + '.' + s.slice(-1),
+				source: false
+			}
 		} else if (name.indexOf('[') != -1 && name.indexOf(']') != -1) {
 			var pieces = name.split('[');
 			if (eval('this.vars.' + pieces[0] + '.value[' + pieces[1]))
@@ -631,12 +740,12 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 		name: node.id ? node.id.name : '',
 		params: _.pluck(node.params, 'name'),
 		body: node.body.body || nody.body,
-		raw: 'function',
+		raw: 'Function',
 		sink: false
 	}
 	var s = this;
 	fe.scope = new Scope(this);
-	fe.scope.vars['prototype'] = {type: 'object', value: {}, source: false};
+	fe.scope.vars['prototype'] = {type: 'Object', value: {}, source: false};
 
 	fe.traverse = function(_params) {
 		var scope = this.scope;
@@ -690,6 +799,7 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 
 Scope.prototype.resolveAssignment = function(node) {
 	var scope = this;
+
 	if (node.right.type == 'AssignmentExpression') {
 		var assign = scope.resolveAssignment(node.right);
 		return {
@@ -707,13 +817,14 @@ Scope.prototype.resolveAssignment = function(node) {
 
 Scope.prototype.resolvePath = function(file, cb) {
 	var pkg;
-	if (file.indexOf('./') === 0 || file.indexOf('../') === 0)
-		if (path.extname(file) == '.json')
-			return false;	
+	// if (file.indexOf('./') === 0 || file.indexOf('../') === 0)
+	// 	if (path.extname(file) == '.json')
+	// 		return false;	
 
 	try {
 		pkg = resolve.sync(file, {basedir: String(this.file).split('/').slice(0,-1).join('/')});
 	} catch (e) {
+		console.error(chalk.red('Could not find ' + file))
 		return false;
 	}
 
@@ -722,6 +833,12 @@ Scope.prototype.resolvePath = function(file, cb) {
 	else if (pkg)
 		return cb(pkg);
 };
+
+// Convienence function to return the file and line number of the given node 
+// in the format: file:line
+Scope.prototype.pos = function(node) {
+	return (Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file):'') + ':' + pos(node);
+}
 
 Scope.prototype.traverse = function(body) {
 	if (!body)
@@ -758,7 +875,7 @@ Scope.prototype.traverse = function(body) {
 			}
 		} catch (e) {
 			if (Flags.debug && e.stack) {
-				console.error(chalk.bold.red('Error reading line:'), scope.file + ':' + pos(node));
+				console.error(chalk.bold.red('Error reading line:'), scope.pos(node));
 				console.error(e.stack);
 			}
 		}

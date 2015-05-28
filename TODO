@@ -1,2 +1,7 @@
+Soonish:
  - Flesh out callbacks more
  - Improve tests
+
+Far off:
+ - Make as sublime plugin
+ - - and / or eslint rule

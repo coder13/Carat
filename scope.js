@@ -6,20 +6,19 @@
 	- CallExpressions:
 		- Are in the form a1.a2...(b1, b2...)
 		- Exist as either a name and it's arguments and are either handled as such or it might return something (require)
-		- Or the name references a function and that function should be ran using the given function's arguments as parameters. 
+		- Or the name references a function and that function should be ran using the given function's arguments as parameters.
 	- Expressions:
-		- All expressions will have a type, value and source properities. 
-		- An Object's type will be 'Object' and it's value will be an object containing it's children. 
-			- If you want module.exports, you will do module.value.exports. 
+		- All expressions will have a type, value and source properities.
+		- An Object's type will be 'Object' and it's value will be an object containing it's children.
+			- If you want module.exports, you will do module.value.exports.
 			- This way, an object can be parsed that has 'type' or 'source' as it's children
 
-	- Reports: 
+	- Reports:
 		Defines a vulnerability as a source that ends up in a sink
 		Has a source property containing the name of the source and its line number and file it was born
 		Has a sink property contain the name of the sink and its line number and file it was executed.
-		Also has a chain property which is a list of all the statements that affected it. 
+		Also has a chain property which is a list of all the statements that affected it.
 
-db.json
 */
 
 var chalk = require('chalk'),
@@ -39,7 +38,7 @@ var Sources = ['process.argv']; // default list of sources
 var Sinks = ['eval'];			// default list of sinks
 
 // So as to not be parsing the same file twice. We want to parse once,
-// possibly traverse with different argumements multiple times. 
+// possibly traverse with different argumements multiple times.
 var lookupTable = {};
 
 // todo callbacks and custom: have each be an object containging a name (regex) and the function handler (or another object)
@@ -47,7 +46,7 @@ var lookupTable = {};
 
 // List of CallExpressions that have evil callbacks.
 // cbParam is where the callback is and sourceParam is the argument in the callback that is the source
-var callbacks = {"require('fs').readFile": {cbParam: 2, sourceParam: 1}}
+var callbacks = {"require('fs').readFile": {cbParam: 2, sourceParam: 1}};
 
 // Custom functions that handle call expressions.
 // These are for more complicated callbacks or other.
@@ -57,15 +56,16 @@ var custom = [
 			// Get file
 			var file;
 			var scope = this;
-			
-			if (node.arguments[0].type == 'Literal') {
+
+			if (node.arguments[0].type === 'Literal') {
 				file = node.arguments[0].value;
-			} else if (node.arguments[0].type == 'Identifier') {
+			} else if (node.arguments[0].type === 'Identifier') {
 				file = this.resolve(node.arguments[0].name).value;
-				if (typeof file != 'string')
+				if (typeof file !== 'string')
 					return undefined;
-			} else
+			} else {
 				return undefined;
+			}
 
 			if (file.match('.*.json')) {
 				var rtrn;
@@ -76,11 +76,11 @@ var custom = [
 						var newJson = {};
 						for (var i in j) {
 							newJson[i] = {
-								value: typeof j[i] == 'Object' ? resolveJSON(j[i]) : j[i]
-							}
+								value: typeof j[i] === 'object' ? resolveJSON(j[i]) : j[i]
+							};
 						}
 						return newJson;
-					}
+					};
 
 					rtrn = resolveJSON(json);
 				});
@@ -101,29 +101,30 @@ var custom = [
 				if (lookupTable[pkg])
 					return;
 				lookupTable[pkg] = true;
-				code = fs.readFileSync(pkg);
-				if (code) {
-					var ast = esprima.parse(String(code), {loc: true});
-					if (!ast)
-						return;
-					if (Flags.verbose && !Flags.json)
-						console.log(chalk.yellow(' ---- '), pkg);
+				var code = fs.readFileSync(pkg);
+				if (!code)
+					return false;
 
-					var newScope = new Scope({
-						file: pkg,
-					});
-					newScope.traverse(ast);
+				var ast = esprima.parse(String(code), {loc: true});
+				if (!ast)
+					return;
+				if (Flags.verbose && !Flags.json)
+					console.log(chalk.yellow(' ---- '), pkg);
 
-					if (newScope.vars.module) {
-						r = newScope.vars.module.value.exports;
+				var newScope = new Scope({
+					file: pkg,
+				});
+				newScope.traverse(ast);
 
-						if (Flags.json) {
-							scope.reports.push(newScope.reports);
-						}
-							
-					} else
-						if (Flags.verbose && !flags.json)
-							console.log(chalk.yellow(' ---- '), chalk.red(pkg));
+				if (newScope.vars.module) {
+					r = newScope.vars.module.value.exports;
+
+					if (Flags.json) {
+						scope.reports.push(newScope.reports);
+					}
+
+				} else if (Flags.verbose && !Flags.json) {
+					console.log(chalk.yellow(' ---- '), chalk.red(pkg));
 				}
 
 			});
@@ -131,7 +132,7 @@ var custom = [
 			return r;
 		}
 	},
-	{	name: "^require\\(\'hapi\'\\).Server\\(.*?\\).route$", // (new require('hapi').server()).route()
+	{	name: "^require\\(\'hapi\'\\).Server\\(.*?\\).route$", // (nequire('hapi').server()).route()
 		handler: function (node, ce) {
 			var func;
 			if (ce.arguments[0].value.config && ce.arguments[0].value.config.value.handler) {
@@ -178,10 +179,12 @@ var Scope = function(parent) {
 	if (!this.vars.exports) this.vars.exports = this.vars.module.value.exports;
 	if (!this.vars.global) this.vars.global = {type: 'Object'};
 	this.vars.this = this.vars;
-	
+
 	this.sources = parent.sources || Sources;
 	this.sinks = parent.sinks || Sinks;
-	
+
+	this.funcLookupTable = {};
+
 	this.reports = [];
 	if (parent.reports) {
 		parent.reports.forEach(function (i) {
@@ -197,7 +200,7 @@ var Scope = function(parent) {
 	this.resolveExpression['Literal'] = function (right) {
 		return {
 			type: right.type,
-			value: typeof right.value == 'string' ?
+			value: typeof right.value === 'string' ?
 				"'" + right.value + "'" : right.value
 		};
 	};
@@ -206,14 +209,14 @@ var Scope = function(parent) {
 		var resolved = scope.resolve(right.name);
 		// resolve right if resolved is undefined or is exactly right.name (implying that right doesn't exist in vars)
 		// resolve is false (meaning we don't want the resolved value)
-		if ((resolve == undefined || resolved === right.name) || resolve) {
+		if ((resolve === undefined || resolved === right.name) || resolve) {
 			var isSource = false;
-			
+
 			for (var i in Sources) {
 				if (right.name.indexOf(i + '.') === 0 ||
 					right.name.indexOf(i + '(') === 0 ||
 					right.name.indexOf(i + '[') === 0 ||
-					right.name == i) {
+					right.name === i) {
 					isSource = true;
 				}
 			}
@@ -226,7 +229,7 @@ var Scope = function(parent) {
 				type: right.type,
 				value: right.name,
 				source: isSource
-			}
+			};
 		} else {
 			return resolved;
 		}
@@ -253,11 +256,11 @@ var Scope = function(parent) {
 		return {
 			type: 'Array',
 			value: elements,
-		}
+		};
 	};
 
 	this.resolveExpression['UnaryExpression'] = function (right) {
-		return scope.resolveExpression[right.argument.type](right.argument)
+		return scope.resolveExpression[right.argument.type](right.argument);
 	};
 
 	this.resolveExpression['UpdateExpression'] = function (right) {
@@ -268,11 +271,11 @@ var Scope = function(parent) {
 		var ce = {
 			type: 'ConditionalExpression',
 			test: scope.resolveExpression[right.test.type](right.test)
-		}
+		};
 		if (right.consequent) {
 			ce.consequent = scope.resolveExpression[right.consequent.type](right.consequent);
 		} else if (right.alternate) {
-			ce.alternate = scope.resolveExpression[right.alternate.type](right.alternate)
+			ce.alternate = scope.resolveExpression[right.alternate.type](right.alternate);
 		}
 		return ce;
 	};
@@ -283,7 +286,7 @@ var Scope = function(parent) {
 			type: 'BinaryExpression',
 			op: right.operator,
 			source: false
-		}
+		};
 		if (right.left)
 			be.left = scope.resolveExpression[right.left.type](right.left);
 
@@ -301,12 +304,12 @@ var Scope = function(parent) {
 				scope.report('SOURCE', right, expr.value);
 			}
 			obj[i.key.name] = expr;
-			
+
 		});
 		return {
 			type: 'Object',
 			value: obj
-		}
+		};
 	};
 
 	this.resolveExpression['NewExpression'] =
@@ -314,15 +317,15 @@ var Scope = function(parent) {
 		var ce = scope.resolveCallExpression(right),
 			isSink = false;
 
-		resolved = scope.resolve(ce.callee.value);
-		if (resolved && resolved != ce.callee && resolved != ce.callee.value)
+		var resolved = scope.resolve(ce.callee.value);
+		if (resolved && resolved !== ce.callee && resolved !== ce.callee.value)
 			ce.callee = scope.resolve(ce.callee.value);
-		
+
 		// Handles the callee. If it's a function, traverse the function with the given parameters
-		// If it's simply the name of a function, handle it normally. 
-		if (ce.callee.type == 'Function') {	
+		// If it's simply the name of a function, handle it normally.
+		if (ce.callee.type === 'Function') {
 			ce.callee.traverse(ce.arguments);
-		} else if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
+		} else if (ce.callee.type === 'Identifier' || ce.callee.type === 'MemberExpression') {
 			var rtrn;
 			_(custom).some(function (i) {
 				if (ce.callee.value.match(i.name)) {
@@ -333,8 +336,8 @@ var Scope = function(parent) {
 			if (rtrn)
 				return rtrn;
 		}
-		
-		if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
+
+		if (ce.callee.type === 'Identifier' || ce.callee.type === 'MemberExpression') {
 			for (var i in Sinks) {
 				if (ce.callee.value.search(Sinks[i]) === 0) {
 					isSink = true;
@@ -362,33 +365,35 @@ var Scope = function(parent) {
 				func.traverse.call(func, params);
 			}
 
-			if (!ce.arguments || ce.arguments.length == 0) {
+			if (!ce.arguments || ce.arguments.length === 0) {
 				return;
 			}
 
 			// For each argument of the function, if it is a Source and ce is a Sink, report the sink.
 			ce.arguments.forEach(function handleArg(arg) {
 
-				if (arg.type == 'BinaryExpression' || arg.type == 'ConditionalExpression') {
+				if (arg.type === 'BinaryExpression' || arg.type === 'ConditionalExpression') {
 					handleArg(arg.left);
 					handleArg(arg.right);
 				}
 
-				if (arg.type != 'Identifier' && arg.type != 'MemberExpression')
+				if (arg.type !== 'Identifier' && arg.type !== 'MemberExpression')
 					return;
 
 				var resolved = scope.resolve(arg.value);
 				if (resolved && resolved !== arg.value)
 					arg = resolved;
-				
-				if (scope.resolve(arg.value).value)
-					arg = scope.resolve(arg.value);
+
+				if (scope.resolve(arg.value)) {
+					if (scope.resolve(arg.value).value)
+						arg = scope.resolve(arg.value);
+				}
 				if (arg.source) {
 					scope.report('SOURCE', right, arg.value);
 
 					scope.report('SINK', right, arg.value, ce.callee.value);
 				}
-				
+
 			});
 		}
 
@@ -396,7 +401,7 @@ var Scope = function(parent) {
 			type: right.type,
 			value: ce,
 			sink: isSink,
-		}
+		};
 	};
 
 	this.resolveExpression['MemberExpression'] = function (right) {
@@ -405,15 +410,15 @@ var Scope = function(parent) {
 
 		// todo: make better. Awful hack for now
 		for (var i in Sources) {
-			split = me.split('.')[0];
+			var split = me.split('.')[0];
 			if (me.indexOf(i + '.') === 0 ||
 				me.indexOf(i + '(') === 0 ||
 				me.indexOf(i + '[') === 0 ||
-				me == i || scope.vars[split]?scope.vars[split].source:false ||
+				me === i || scope.vars[split]?scope.vars[split].source:false ||
 				split.indexOf(i + '.') === 0 ||
 				split.indexOf(i + '(') === 0 ||
 				split.indexOf(i + '[') === 0 ||
-				split == i) {
+				split === i) {
 				isSource = true;
 			}
 		}
@@ -427,7 +432,7 @@ var Scope = function(parent) {
 
 	this.resolveExpression['FunctionExpression'] = function (right) {
 		var func = scope.resolveFunctionExpression(right);
-		
+
 		func.isSink = false;
 
 		func.traverse(_.map(func.params, function (i) {
@@ -447,29 +452,31 @@ var Scope = function(parent) {
 		var assign = scope.resolveAssignment(right);
 		assign.names.forEach(function (name) {
 			log.call(scope, 'ASSIGN', right, name.value, assign.value);
-			
-			if (name.type == 'MemberExpression') {
-				
+			if (name.type === 'MemberExpression') {
+
 			}
 
 			try  {
 				name.value = name.value.replace(/\./g, '.value.');
 				if (eval('!!scope.vars.' + name.value.split('.').slice(0, -1).join('.')))
-					eval('scope.vars.' + name.value + ' = ' + JSON.stringify(assign.value));
-			} catch (e) {}
-		});
+					eval('scopec.vars.' + name.value + ' = ' + JSON.stringify(assign.value));
+			} catch (e) {
 
+			}
+		});
+		return assign.value;
 	};
 
 
 	this.resolveStatement = {
-		DebuggerStatement: function () {},	// undefined, does nothing normally. 
-		ContinueStatement: function () {}, 	// undefined, serves no purpose in static anaylsis. 
+		DebuggerStatement: function () {},	// undefined, does nothing normally.
+		ContinueStatement: function () {}, 	// undefined, serves no purpose in static anaylsis.
 		BreakStatement: function() {},		// ^^
 		EmptyStatement: function() {},		// ^^
-		Literal: function () {}				// Example: 'use strict';
+		Literal: function () {},			// Example: 'use strict';
+		MemberExpression: function () {}	// Standalone MemberExpressions; Does nothing.
 	};
-		
+
 	this.resolveStatement['VariableDeclaration'] = function (node) {
 		node.declarations.forEach(function (variable) {
 			var name = variable.id.name;
@@ -498,19 +505,19 @@ var Scope = function(parent) {
 		node.expressions.forEach(function (expr) {
 			scope.resolveStatement[expr.type](expr);
 		});
-	}
+	};
 
 	this.resolveStatement['UpdateExpression'] =
 	this.resolveStatement['UnaryExpression'] = this.resolveExpression['UpdateExpression'];
 
 	this.resolveStatement['NewExpression'] = function (node) {
 
-	}
+	};
 
 	this.resolveStatement['CallExpression'] = function (node, sinkCB) {
 		var ce = scope.resolveExpression['CallExpression'](node, sinkCB);
 
-		if (ce.type == 'CallExpression')
+		if (ce.type === 'CallExpression')
 			log.call(scope, ce.sink ? 'SINK' : 'CE', node, ce.value.callee, ce);
 	};
 
@@ -537,7 +544,7 @@ var Scope = function(parent) {
 		if (node.test)
 			test = scope.resolveExpression[node.test.type](node.test);
 		scope.traverse(node.body);
-		log.call(scope, 'WHILE', node, node.test ? test : '')
+		log.call(scope, 'WHILE', node, node.test ? test : '');
 	};
 
 
@@ -560,13 +567,13 @@ var Scope = function(parent) {
 
 	this.resolveStatement['ThrowStatement'] = function (node) {
 		scope.resolveExpression[node.argument.type](node.argument);
-	}
+	};
 
 	this.resolveStatement['TryStatement'] = function (node) {
 		scope.traverse(node.block);
 		node.handlers.forEach(function (handler) { // array of catch clauses
 			scope.resolveStatement[handler.type](handler);
-		})
+		});
 	};
 
 	this.resolveStatement['CatchClause'] = function (node) {
@@ -586,7 +593,7 @@ var Scope = function(parent) {
 		if (node.test) // example: default statement doesn't have a test
 			scope.resolveExpression[node.test.type](node.test);
 		scope.traverse(node.consequent);
-	}
+	};
 
 
 	this.resolveStatement['ReturnStatement'] = function (node, sourcCB) {
@@ -595,7 +602,7 @@ var Scope = function(parent) {
 
 		var arg = scope.resolveExpression[node.argument.type](node.argument);
 		if (arg.source && sourcCB) {
-			sourcCB(arg.source)
+			sourcCB(arg.source);
 		}
 
 		log.call(scope, 'RETURN', node, '', arg);
@@ -609,10 +616,10 @@ Scope.prototype.report = function (type, node, source, name) {
 	if (Flags.debug)
 		console.log(chalk.red(type), chalk.grey(this.pos(node)), chalk.blue(source.value||source), !!name?name:'\t', scope.reports.length!=0?scope.reports:'N/A');
 	switch (type) {
-		case 'SOURCE': 
+		case 'SOURCE':
 			var report = find(scope.reports, source);
 			var p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) + ':' + pos(node);
-			
+
 			if (!report){
 				scope.reports.push({
 					source: {
@@ -625,13 +632,13 @@ Scope.prototype.report = function (type, node, source, name) {
 			return false;
 		case 'SINK':
 			report = find(scope.reports, source);
-			
+
 			if (report) {
 				var p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), scope.file) + ':' + pos(node);
 				report.sink = {
 					name: name,
 					line: p
-				}
+				};
 
 				// Flush the report. After finding the sink, we don't want to track it anymore.
 				scope.reports.splice(scope.reports.indexOf(report), 1);
@@ -640,7 +647,7 @@ Scope.prototype.report = function (type, node, source, name) {
 
 			return false;
 	}
-}
+};
 
 Scope.prototype.onReport = function () {};
 
@@ -649,29 +656,29 @@ Scope.prototype.onReport = function () {};
 // resolve(a) will result in b
 // TODO: IMRPOVE!!
 Scope.prototype.resolve = function(name) {
-	if (!name || typeof name != 'string')
+	if (!name || typeof name !== 'string')
 		return name;
 
 	try {
 		if (eval('!!this.vars.' +  name)) {
 			return eval('this.vars.' + name);
-		} else if (name.indexOf('.') != -1) {
+		} else if (name.indexOf('.') !== -1) {
 			var s = name.split('.');
-			
+
 			if (eval('!!this.vars.' + s[0] + '.value.' + s[1]))
 				return eval('this.vars.' + s[0] + '.value.' + s[1]);
-			
-			var r = this.resolve(s.slice(0,-1).join('.'));
+
+			var r = this.resolve(s.slice(0, -1).join('.'));
 			r = r.value.raw || r.value;
 			return {
-				type: 'MemberExpression', 
+				type: 'MemberExpression',
 				value: r + '.' + s.slice(-1),
 				source: false
-			}
-		} else if (name.indexOf('[') != -1 && name.indexOf(']') != -1) {
+			};
+		} else if (name.indexOf('[') !== -1 && name.indexOf(']') !== -1) {
 			var pieces = name.split('[');
 			if (eval('this.vars.' + pieces[0] + '.value[' + pieces[1]))
-				return eval('this.vars.' + pieces[0] + '.value[' + pieces[1])
+				return eval('this.vars.' + pieces[0] + '.value[' + pieces[1]);
 			else {
 				return false;
 			}
@@ -683,25 +690,28 @@ Scope.prototype.resolve = function(name) {
 };
 
 Scope.prototype.resolveMemberExpression = function(node) {
-	if (node.object.type == 'Identifier')
-		var obj = this.resolveExpression['Identifier'](node.object, false);
-	else
-		var obj = this.resolveExpression[node.object.type](node.object);
+	var obj = node.object.type === 'Identifier' ?
+		this.resolveExpression['Identifier'](node.object, false) :
+		this.resolveExpression[node.object.type](node.object);
+
 	obj = obj.value || obj;
 	obj = obj.value || obj.raw || obj.callee || obj.name || obj;
 
-	if (node.property.type == 'Identifier')
-		var prop = this.resolveExpression['Identifier'](node.property, false);
-	else
-		var prop = this.resolveExpression[node.property.type](node.property);
-	prop = prop.value || prop
+	var prop = node.property.type === 'Identifier' ?
+		this.resolveExpression['Identifier'](node.property, false) :
+		this.resolveExpression[node.property.type](node.property);
+
+	if (!prop)
+		console.log(node);
+
+	prop = prop.value || prop;
 	prop = prop.value || prop.raw || prop.callee || prop.name || prop;
 
 	return obj + (node.computed ? '[' + prop + ']' : '.' + prop);
 };
 
 Scope.prototype.resolveName = function(name) {
-	if (name.type == 'MemberExpression') {
+	if (name.type === 'MemberExpression') {
 		return this.resolveMemberExpression(name);
 	} else {
 		return name.name;
@@ -710,7 +720,7 @@ Scope.prototype.resolveName = function(name) {
 
 Scope.prototype.resolveCallExpression = function (node) {
 	var scope = this;
-	var ce = {}
+	var ce = {};
 
 	if (node.arguments && node.arguments.length > 0){
 		ce.arguments = _.map(node.arguments, function (right) {
@@ -719,7 +729,7 @@ Scope.prototype.resolveCallExpression = function (node) {
 		});
 	}
 
-	if (node.callee.type == 'FunctionExpression') {
+	if (node.callee.type === 'FunctionExpression') {
 		ce.callee = this.resolveExpression['FunctionExpression'](node.callee);
 		ce.callee.traverse(ce.arguments);
 	} else {
@@ -729,21 +739,21 @@ Scope.prototype.resolveCallExpression = function (node) {
 	ce.raw = ce.callee.value + '(' + (ce.arguments ? _.map(ce.arguments, function (i) {
 		if (i)
 			return i.value || i.raw || i;
-	}).join(', '):'') + ')';
+	}).join(', ') : '') + ')';
 
 	return ce;
-}
+};
 
 Scope.prototype.resolveFunctionExpression = function(node) {
 	var fe = {
 		type: node.type,
 		name: node.id ? node.id.name : '',
 		params: _.pluck(node.params, 'name'),
-		body: node.body.body || nody.body,
+		body: node.body.body || node.body,
 		raw: 'Function',
 		sink: false
-	}
-	var s = this;
+	};
+	var parentScope = this;
 	fe.scope = new Scope(this);
 	fe.scope.vars['prototype'] = {type: 'Object', value: {}, source: false};
 
@@ -756,27 +766,34 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 			for (var i = 0; i < _params.length; i++) {
 				scope.vars[this.params[i]] = _params[i];
 			}
-		
+
+		// Allow us to exit out of a function being called recursively.
+		if (parentScope.funcLookupTable[fe.name])
+			return;
+		else
+			parentScope.funcLookupTable[fe.name] = true;
+
+
+		// Look at function declarations first. Different from assigning a variable to a function.
 		this.body = _(this.body).reject(function (node) {
-			if (node.type == 'FunctionDeclaration') {
+			if (node.type === 'FunctionDeclaration') {
 				func = scope.resolveStatement['FunctionDeclaration'](node);
 				return true;
 			}
 		});
 
 		this.body.forEach(function(node) {
-			if (node.type == 'ExpressionStatement')
+			if (node.type === 'ExpressionStatement')
 				node = node.expression;
 
 			try {
-
-				if (node.type == 'CallExpression') {
-					scope.resolveStatement['CallExpression'](node, function (sink) {
+				if (node.type === 'CallExpression') {
+					scope.resolveStatement['CallExpression'](node, function () {
 						this.sink = true;
 					});
-				} else if (node.type == 'ReturnStatement') {
-					scope.resolveStatement['ReturnStatement'](node, function (sink) {
-						
+				} else if (node.type === 'ReturnStatement') {
+					scope.resolveStatement['ReturnStatement'](node, function () {
+
 					});
 				} else if (scope.resolveStatement[node.type]) {
 					scope.resolveStatement[node.type](node);
@@ -800,45 +817,45 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 Scope.prototype.resolveAssignment = function(node) {
 	var scope = this;
 
-	if (node.right.type == 'AssignmentExpression') {
+	if (node.right.type === 'AssignmentExpression') {
 		var assign = scope.resolveAssignment(node.right);
 		return {
 			names: assign.names.concat(scope.resolveExpression[node.left.type](node.left, false)),
 			value: assign.value
 		};
-	
+
 	} else {
 		return {
 			names: [scope.resolveExpression[node.left.type](node.left, false)],
 			value: scope.resolveExpression[node.right.type](node.right)
 		};
 	}
-}; 
+};
 
 Scope.prototype.resolvePath = function(file, cb) {
 	var pkg;
 	// if (file.indexOf('./') === 0 || file.indexOf('../') === 0)
-	// 	if (path.extname(file) == '.json')
-	// 		return false;	
+	// 	if (path.extname(file) === '.json')
+	// 		return false;
 
 	try {
-		pkg = resolve.sync(file, {basedir: String(this.file).split('/').slice(0,-1).join('/')});
+		pkg = resolve.sync(file, {basedir: String(this.file).split('/').slice(0, -1).join('/')});
 	} catch (e) {
-		console.error(chalk.red('Could not find ' + file))
+		console.error(chalk.red('Could not find ' + file));
 		return false;
 	}
 
-	if (file == pkg)
+	if (file === pkg)
 		return false;
 	else if (pkg)
 		return cb(pkg);
 };
 
-// Convienence function to return the file and line number of the given node 
+// Convienence function to return the file and line number of the given node
 // in the format: file:line
 Scope.prototype.pos = function(node) {
-	return (Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file):'') + ':' + pos(node);
-}
+	return (Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) : '') + ':' + pos(node);
+};
 
 Scope.prototype.traverse = function(body) {
 	if (!body)
@@ -849,19 +866,19 @@ Scope.prototype.traverse = function(body) {
 	body = body.body || body;
 
 	// Traverse the function declarations first and get rid of them.
-	// These get priority when scanning and we also don't want to scan them twice. 
+	// These get priority when scanning and we also don't want to scan them twice.
 	body = _(body).reject(function (node) {
-		if (node.type == 'FunctionDeclaration') {
-			func = scope.resolveStatement['FunctionDeclaration'](node); //todo
+		if (node.type === 'FunctionDeclaration') {
+			scope.resolveStatement['FunctionDeclaration'](node); //todo
 			return true;
 		}
 	});
-	
+
 	body.forEach(function(node) {
 		// ExpressionStatements simply wrap other statements.
 		// We don't want expression statements, we want the expressions they wrap
-		
-		if (node.type == 'ExpressionStatement')
+
+		if (node.type === 'ExpressionStatement')
 			node = node.expression;
 
 		try {
@@ -883,25 +900,25 @@ Scope.prototype.traverse = function(body) {
 };
 
 module.exports = function (flags, options) {
-	Flags.recursive = (flags.recursive == undefined ? Flags : flags).recursive;
-	Flags.debug = (flags.debug == undefined ? Flags : flags).debug;
-	Flags.verbose = (flags.verbose == undefined ? Flags : flags).verbose;
+	Flags.recursive = (flags.recursive === undefined ? Flags : flags).recursive;
+	Flags.debug = (flags.debug === undefined ? Flags : flags).debug;
+	Flags.verbose = (flags.verbose === undefined ? Flags : flags).verbose;
 
 	if (options) {
-		if (options.Sinks != undefined) {
-			Sinks = options.Sinks;	
+		if (options.Sinks !== undefined) {
+			Sinks = options.Sinks;
 		}
-		
-		if (options.Sources != undefined) {
+
+		if (options.Sources !== undefined) {
 			Sources = options.Sources;
 		}
 	}
 
 	return Scope;
-}
+};
 
-/* 
-		Convience functions 
+/*
+		Convience functions
 */
 
 var cs = { // colors
@@ -920,24 +937,24 @@ function log(type, node, name, value) {
 		p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) + ':' + p;
 
 	var v = value.value ? (value.value.raw || value.value) : (value.raw || value);
-	console.log(Array(this.depth||1).join('-'), cs[type] ? cs[type]('[' + type + ']') : chalk.blue('[' + type + ']'),
-				chalk.bold.grey(p), name.value||name,
+	console.log(Array(this.depth || 1).join('-'), cs[type] ? cs[type]('[' + type + ']') : chalk.blue('[' + type + ']'),
+				chalk.bold.grey(p), name.value || name,
 				value ? (chalk.bold.green(value.type) + ': ' + chalk.white(v)) : '');
 }
 
 // Quick function to return the line number of a node
 function pos(node) {
 	return node.loc ? String(node.loc.start.line) : '-1';
-};
+}
 
 // Search a object for value with a given name
 function find(reports, name) {
-	if (!name || typeof name != 'string')
+	if (!name || typeof name !== 'string')
 		return false;
 	return _.find(reports, function(i) {
 		return name.indexOf(i.source.name + '.') === 0 ||
-			   name.indexOf(i.source.name + '(') === 0 ||
-			   name.indexOf(i.source.name + '[') === 0 ||
-				   name == i.source.name;				
+				name.indexOf(i.source.name + '(') === 0 ||
+				name.indexOf(i.source.name + '[') === 0 ||
+				name === i.source.name;
 	});
-};
+}

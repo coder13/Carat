@@ -1,17 +1,21 @@
 var esprima = require('esprima'),
-	Scope = require('./scope.js');
+	Scope = require('./scope.js'),
+	chalk = require('chalk');
 
 var Sinks = [
-	"eval",
-	"setTimeout",
-	"clearTimeout",
-	"setInterval",
-	"clearInterval",
-	"require\\([\\']child_process[\\']\\)\\.exec",
-	"require\\([\\']http[\\']\\)\\.get",
-	"require\\([\\']fs[\\']\\)\\.\\w+",
+	"^eval$",
+	"^setTimeout$",
+	"^clearTimeout$",
+	"^setInterval$",
+	"^clearInterval$",
+	"^require\\('child_process'\\).exec$",
+	"^require\\('http'\\).get$",
+	"^require\\('fs'\\).*?$",
+	"^require\\('express'\\).*?$",
+	"^require\\('hapi'\\).*?$",
 ];
-var Sources = ['process.argv'];
+
+var Sources = ['^process.argv.*$'];
 
 var Flags = module.exports.Flags = {
 	recursive: false,
@@ -37,6 +41,7 @@ module.exports.check = function(code, file) {
 
 	Scope.prototype.onReport = function (report) {
 		reports.push(report);
+		console.log(chalk.red('[REPORT]'), report.sink.name, report.source.name);
 	};
 
 	var scope = new Scope({

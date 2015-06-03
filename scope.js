@@ -53,7 +53,7 @@ var callbacks = [
 		name: "^require\\('hapi'\\).Server\\(.*?\\).route$",
 		handler: function (node, ce) {
 			var func;
-			
+
 			if (ce.arguments[0].type == 'Object') {
 				if (ce.arguments[0].props.config && ce.arguments[0].props.config.props.handler) {
 					func = ce.arguments[0].props.config.props.handler;
@@ -72,7 +72,7 @@ var callbacks = [
 					source: false
 				};
 			});
-			
+
 			params[0].source = true;
 			log.call(func.scope, 'SOURCE', node, func.params[0]);
 			func.scope.report('SOURCE', node, func.params[0]);
@@ -185,12 +185,11 @@ var custom = [
 ];
 
 var Scope = function(parent) {
-	parent = parent || {};
+	parent = require('hoek').clone(parent || {}); // Hoek's clone works better than underscore's
+	var scope = this;
 
 	this.depth = parent.depth ? parent.depth + 1 : 1;
 
-	if (!parent.file)
-		throw new Error("parent.file isn't defined");
 	this.file = parent.file || '';
 	if (!Scope.baseFile)
 		Scope.baseFile = parent.file;
@@ -211,11 +210,10 @@ var Scope = function(parent) {
 	this.reports = [];
 	if (parent.reports) {
 		parent.reports.forEach(function (i) {
-			this.reports.push(i);
+			scope.reports.push(i);
 		});
 	}
 
-	var scope = this;
 
 	this.resolveExpression = {
 	};
@@ -519,15 +517,17 @@ var Scope = function(parent) {
 	this.resolveExpression['AssignmentExpression'] = function (right) {
 		var assign = scope.resolveAssignment(right);
 		assign.names.forEach(function (name) {
+			var firstScope = Scope.firstScope(name.value) || Scope.Global;
+
 			// Block of code that creates a property if it doesn't exist
 			// and in the end, sets the name to the value.
 			if (name.type == 'Identifier') {
-				scope.vars[name.value] = assign.value;
+				firstScope.vars[name.value] = assign.value;
 			} else if (name.type == 'MemberExpression') {
 				var splitName = splitME(name.value || name);
-				var n = scope.vars[splitName[0]];
+				var n = firstScope.vars[splitName[0]];
 				if (!n) {
-					scope.vars[splitName[0]] = n = {
+					firstScope.vars[splitName[0]] = n = {
 						type: 'Object',
 						props: {},
 						source: false
@@ -553,7 +553,7 @@ var Scope = function(parent) {
 					n.props = {};
 				n.props[splitName[i]] = assign.value; // Now assign the last to the value.
 			}
-			log.call(scope, 'ASSIGN', right, name, assign.value);
+			log.call(firstScope, 'ASSIGN', right, name, assign.value);
 		});
 		return assign.value;
 	};
@@ -700,6 +700,15 @@ var Scope = function(parent) {
 
 };
 
+// returns the first scope that contains name. If it can't find one, returns false
+Scope.firstScope = function(name) {
+	for (var i = Scope.stack.length - 1; i >= 0; i--) {// because array.reverse reverses the array when we don't want it to
+		if (_.has(Scope.stack[i].vars, name))
+			return Scope.stack[i];
+	}
+	return false;
+};
+
 Scope.prototype.report = function (type, node, source, name) {
 	var scope = this;
 
@@ -744,47 +753,42 @@ Scope.prototype.onReport = function () {};
 // Takes in any name and returns the value if the name is in scope.vars.
 // Returns false if there is no variable with the name.
 Scope.prototype.resolve = function(name) {
-	var scope = this,
-		split = splitME(name), // should ignore dots inside parenthesis
-		rtrn = false;
+	var split = splitME(name); // should ignore dots inside parenthesis
+	var scope = Scope.firstScope(split[0]) || Scope.Global;
 
-	_.some(this.vars, function (value, key) {
-		if (key == name) {
-			rtrn = value;
-			return true;
-		} else if (name != split) { // meaning it contains dots
-			if (key === split[0]) {
-				var v = scope.resolve(split[0]);
-				if (!v || !v.type == 'Undefined') {
+	if (name == split) {
+		var value = scope.vars[name];
+		return value;
+	} else {
+		var v = scope.vars[0];
+		if (!v || v.type == 'Undefined')
+			return false;
+
+		var rtrn = {
+			type: 'MemberExpression',
+			value: name,
+			source: v.source,
+		};
+
+		if (v.type == 'Object') {
+			for (var i = 1; i < split.length; i++) {
+				if (!v.props || !v.props[split[i]]) {
 					rtrn = false;
 					return true;
 				}
-				rtrn = {
-					type: 'MemberExpression',
-					value: name,
-					source: v.source,
-				};
-
-				if (v.type == 'Object') {
-					for (var i = 1; i < split.length; i++) {
-						if (!v.props || !v.props[split[i]]) {
-							rtrn = false;
-							return true;
-						}
-						v = v.props[split[i]];
-					}
-					rtrn = v;
-				} else if (v.type == 'MemberExpression') {
-					rtrn.value = name.replace(key, v.value);
-				} else if (v.type == 'CallExpression' || v.type == 'NewExpression') {
-					rtrn.value = name.replace(key, v.value.raw || v.value.callee.value || v.value.callee);
-				}
-				return true;
-			} // todo: else
+				v = v.props[split[i]];
+			}
+			rtrn = v;
+		} else if (v.type == 'MemberExpression') {
+			rtrn.value = name.replace(split[0], v.value);
+		} else if (v.type == 'CallExpression' || v.type == 'NewExpression') {
+			rtrn.value = name.replace(split[0], v.value.raw || v.value.callee.value || v.value.callee);
 		}
 
-	});
-	return rtrn;
+		return rtrn;
+	}
+
+	return false;
 };
 
 // Takes in ast and returns a string.
@@ -849,7 +853,7 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 		raw: 'Function',
 		sink: false
 	};
-	var parentScope = this;
+	fe.parentScope = this;
 	fe.scope = new Scope(this);
 
 	fe.traverse = function(_params) {
@@ -864,11 +868,16 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 		}
 
 		// TODO: REWORK
-		// var raw = fe.name||'Function' + '(' + _.map(_params, stringifyArg).join(',') + ')';
-		// if (scope.funcLookupTable[raw])
-		// 	return;
-		// else
-		// 	scope.funcLookupTable[raw] = true;
+		var raw = scope.pos(node) + (fe.name||'Function') + '(' + _.map(_params, function (i) {
+			return require('util').inspect(i); 
+		}).join(',') + ')';
+
+		if (scope.funcLookupTable[raw]) {
+			return;
+		} else {
+			scope.funcLookupTable[raw] = true;
+		}
+
 
 		// Look at function declarations first. Different from assigning a variable to a function.
 		// Create temp variable because we could run this function multiple times
@@ -931,7 +940,7 @@ Scope.prototype.resolveAssignment = function(node) {
 
 Scope.prototype.resolvePath = function(file, cb) {
 	var pkg;
-	
+
 	try {
 		pkg = resolve.sync(file, {basedir: String(this.file).split('/').slice(0, -1).join('/')});
 	} catch (e) {
@@ -955,6 +964,7 @@ Scope.prototype.traverse = function(body) {
 	if (!body)
 		return;
 	var scope = this;
+	Scope.stack.push(this);
 
 	body = body.body || body;
 
@@ -989,6 +999,8 @@ Scope.prototype.traverse = function(body) {
 			}
 		}
 	});
+
+	Scope.stack.pop();
 };
 
 module.exports = function (flags, options) {
@@ -1025,11 +1037,12 @@ function log(type, node, name, value) {
 	if (!Flags.verbose)
 		return;
 	var p = pos(node);
-	if (Scope.baseFile)
+	if (Scope.baseFile && this.file) 
 		p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) + ':' + p;
+	else if (Scope.baseFile)
+		p = 'Global:' + p;
 
-
-	v = value ? stringifyArg(value) : '';
+	var v = value ? stringifyArg(value) : '';
 	console.log(Array(this.depth || 1).join('-'), cs[type] ? cs[type]('[' + type + ']') : chalk.blue('[' + type + ']'),
 				chalk.bold.grey(p), name.name || name.raw || name.value || name,
 				value ? (chalk.bold.green(value.type) + ': ' + chalk.white(v)) : '');

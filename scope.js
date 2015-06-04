@@ -215,8 +215,7 @@ var Scope = function(parent) {
 	}
 
 
-	this.resolveExpression = {
-	};
+	this.resolveExpression = {};
 
 	this.resolveExpression['Literal'] = function (right) {
 		return {
@@ -267,14 +266,16 @@ var Scope = function(parent) {
 		if (!resolved || !resolve) {
 			if (!me.source) {
 				// Determines if a source.
-				// todo: make better. Awful hack for now
-				_.each(Sources, function (i) {
-					var split = splitME(me.value)[0];
-					if (me.value.search(i) == 0 || (scope.vars[split] && scope.vars[split].source)) {
-						me.source = true;
-						return true;
-					}
-				});
+				resolved = scope.resolve(splitME(me.value)[0]);
+				if (resolved && resolved.source)
+					me.source = true;
+				else
+					_.each(Sources, function (i) {
+						if (me.value.search(i) == 0) {
+							me.source = true;
+							return true;
+						}
+					});
 			}
 
 			return me;
@@ -365,6 +366,15 @@ var Scope = function(parent) {
 		var ce = scope.resolveCallExpression(right),
 			isSink = false;
 
+		// Quick resolve iff type is an Identifier or a memberExpression
+		if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
+			var resolved = scope.resolve(ce.callee.value);
+			if (resolved) {
+				ce.raw = ce.raw.replace(ce.callee.value, resolved.value);
+				ce.callee = resolved;
+			}
+		}
+
 		// Handles the callee. If it's a function, traverse the function with the given parameters
 		// If it's simply the name of a function, handle it normally.
 		if (ce.callee.type == 'Function') {
@@ -375,104 +385,87 @@ var Scope = function(parent) {
 				sink: isSink,
 			};
 		} else if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
-			var resolved = scope.resolve(ce.callee.value);
-			if (resolved) {
-				ce.raw = ce.raw.replace(ce.callee.value, resolved.value);
-				ce.callee = resolved;
-			}
-			if (ce.callee.type == 'Function') {
-				ce.callee.traverse(ce.arguments);
-				return {
-					type: right.type,
-					value: ce,
-					sink: isSink,
-				};
-			} else if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
-				// Determines if ce is a sink.
-				for (var i in Sinks) {
-					if (ce.callee.value.search(Sinks[i]) == 0) {
-						isSink = true;
-						// If sinkCB is defined, this call expression is inside of a function.
-						// We want the function to know that there is a sink inside of it
-						// and to have it mark itself as a sink.
-						if (sinkCB)
-							sinkCB(ce.callee.value);
-					}
+			// Determines if ce is a sink.
+			for (var i in Sinks) {
+				if (ce.callee.value.search(Sinks[i]) == 0) {
+					isSink = true;
+					// If sinkCB is defined, this call expression is inside of a function.
+					// We want the function to know that there is a sink inside of it
+					// and to have it mark itself as a sink.
+					if (sinkCB)
+						sinkCB(ce.callee.value);
 				}
+			}
 
-				log.call(scope, isSink ? 'SINK' : 'CE', right, ce.callee, {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
+			log.call(scope, isSink ? 'SINK' : 'CE', right, ce.callee, {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
 
-				// Custom handler for functions such as require
-				var rtrn;
-				_.some(custom, function (i) {
-					if (ce.callee.value.match(i.name)) {
-						rtrn = i.handler.call(scope, right, ce);
+			// Custom handler for functions such as require
+			var rtrn;
+			_.some(custom, function (i) {
+				if (ce.callee.value.match(i.name)) {
+					rtrn = i.handler.call(scope, right, ce);
+					return true;
+				}
+			});
+			if (rtrn)
+				return rtrn;
+
+		}
+
+		if (ce.arguments && ce.arguments.length != 0) {
+			// Handles simple callbacks containing parameters that are sources
+			if (isSink) {
+				_.some(callbacks, function (callback) {
+					if (ce.callee.value.search(callback.name) != 0)
+						return false;
+
+					if (typeof callback.handler == 'object') {
+						var func = ce.arguments[callback.handler.cbParam];
+						if (!func)
+							return false;
+
+						if (func.type == 'Identifier' || func.type == 'MemberExpression') {
+							var resolved = scope.resolve(func.value);
+							if (resolved) {
+								func = resolved;
+							}
+						}
+
+						// generate a list of default arguments for the parameters.
+						// TODO: abstract this into a convienence function
+						var params = _.map(func.params, function (p) {
+							return {
+								type: 'Identifier',
+								value: p,
+								source: false
+							};
+						});
+
+						if (params[callback.handler.sourceParam]) {
+							// Mark the bad param as the source
+							params[callback.handler.sourceParam].source = true;
+							func.scope.report('SOURCE', right, params[callback.handler.sourceParam].value);
+						}
+
+						if (func.type == 'Function')
+							func.traverse.call(func, params);
+
+						return true;
+					} else if (typeof callback.handler == 'function') {
+						callback.handler.call(scope, right, ce);
 						return true;
 					}
 				});
-				if (rtrn)
-					return rtrn;
 			}
-		}
 
-		if (isSink) {
-			// Handles simple callbacks containing parameters that are sources
-			_.some(callbacks, function (callback) {
-				if (ce.callee.value.search(callback.name) != 0)
-					return false;
-
-				if (typeof callback.handler == 'object') {
-					var func = ce.arguments[callback.handler.cbParam];
-					if (!func)
-						return false;
-
-					if (func.type == 'Identifier' || func.type == 'MemberExpression') {
-						var resolved = scope.resolve(func.value);
-						if (resolved) {
-							func = resolved;
-						}
-					}
-
-
-
-					// generate a list of default arguments for the parameters.
-					// TODO: abstract this into a convienence function
-					var params = _.map(func.params, function (p) {
-						return {
-							type: 'Identifier',
-							value: p,
-							source: false
-						};
-					});
-
-					if (params[callback.handler.sourceParam]) {
-						// Mark the bad param as the source
-						params[callback.handler.sourceParam].source = true;
-						func.scope.report('SOURCE', right, params[callback.handler.sourceParam].value);
-					}
-
-					if (func.type == 'Function')
-						func.traverse.call(func, params);
-
-					return true;
-				} else if (typeof callback.handler == 'function') {
-					callback.handler.call(scope, right, ce);
-					return true;
+			// For each argument of the function, if it is a Source and ce is a Sink, report the sink.
+			ce.arguments.forEach(function handleArg(arg) {
+				if (arg.type == 'BinaryExpression' || arg.type == 'ConditionalExpression') {
+					handleArg(arg.left);
+					handleArg(arg.right);
 				}
 
-			});
-
-			if (ce.arguments && ce.arguments.length != 0) {
-				// For each argument of the function, if it is a Source and ce is a Sink, report the sink.
-				ce.arguments.forEach(function handleArg(arg) {
-					if (arg.type == 'BinaryExpression' || arg.type == 'ConditionalExpression') {
-						handleArg(arg.left);
-						handleArg(arg.right);
-					}
-
-					if (arg.type != 'Identifier' && arg.type != 'MemberExpression')
-						return;
-					
+				if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
 					var resolvedArg = scope.resolve(arg.value);
 					if (resolvedArg && arg.value != resolvedArg.value) {
 						handleArg(scope.resolve(arg.value));
@@ -480,14 +473,11 @@ var Scope = function(parent) {
 
 					if (arg.source) {
 						scope.report('SOURCE', right, arg.value);
-
-						scope.report('SINK', right, arg.value, ce.callee.value);
+						scope.report(isSink ? 'SINK' : right.type, right, arg.value, ce.callee.value);
 					}
-
-				});
-			}
+				}
+			});
 		}
-
 
 		return {
 			type: right.type,
@@ -713,11 +703,11 @@ Scope.prototype.report = function (type, node, source, name) {
 	var scope = this;
 
 	if (Flags.debug)
-		console.log(chalk.red(type), chalk.grey(this.pos(node)), chalk.blue(source.value || source), name || '\t', scope.reports.length != 0 ? scope.reports : 'N/A');
+		console.log(chalk.red(type), chalk.grey(this.pos(node)), chalk.blue(source.value || source), name || '');
+	var p = scope.pos(node);
 	switch (type) {
 		case 'SOURCE':
 			var report = find(scope.reports, source);
-			var p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) + ':' + pos(node);
 
 			if (!report){
 				scope.reports.push({
@@ -733,11 +723,29 @@ Scope.prototype.report = function (type, node, source, name) {
 			report = find(scope.reports, source);
 
 			if (report) {
-				var p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), scope.file) + ':' + pos(node);
 				report.sink = {
 					name: name,
 					line: p
 				};
+
+				// Flush the report. After finding the sink, we don't want to track it anymore.
+				scope.reports.splice(scope.reports.indexOf(report), 1);
+				scope.onReport(report);
+			}
+
+			return false;
+		default:
+			report = find(scope.reports, source);
+
+			if (report) {
+				if (!report.chain)
+					report.chain = [];
+
+				report.chain.push({
+					type: type,
+					name: name,
+					line: p
+				});
 
 				// Flush the report. After finding the sink, we don't want to track it anymore.
 				scope.reports.splice(scope.reports.indexOf(report), 1);
@@ -754,13 +762,14 @@ Scope.prototype.onReport = function () {};
 // Returns false if there is no variable with the name.
 Scope.prototype.resolve = function(name) {
 	var split = splitME(name); // should ignore dots inside parenthesis
-	var scope = Scope.firstScope(split[0]) || Scope.Global;
+	var scope = Scope.firstScope(split[0]) || this;
 
 	if (name == split) {
 		var value = scope.vars[name];
 		return value;
 	} else {
-		var v = scope.vars[0];
+		var v = scope.vars[split[0]];
+
 		if (!v || v.type == 'Undefined')
 			return false;
 
@@ -957,7 +966,10 @@ Scope.prototype.resolvePath = function(file, cb) {
 // Convienence function to return the file and line number of the given node
 // in the format: file:line
 Scope.prototype.pos = function(node) {
-	return (Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) : '') + ':' + pos(node);
+	if (Scope.baseFile && this.file)
+		return (Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) : '') + ':' + pos(node);
+	else
+		return 'Global:' + pos(node);
 };
 
 Scope.prototype.traverse = function(body) {
@@ -1036,11 +1048,7 @@ var cs = { // colors
 function log(type, node, name, value) {
 	if (!Flags.verbose)
 		return;
-	var p = pos(node);
-	if (Scope.baseFile && this.file) 
-		p = path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file) + ':' + p;
-	else if (Scope.baseFile)
-		p = 'Global:' + p;
+	var p = this.pos(node);
 
 	var v = value ? stringifyArg(value) : '';
 	console.log(Array(this.depth || 1).join('-'), cs[type] ? cs[type]('[' + type + ']') : chalk.blue('[' + type + ']'),
@@ -1065,7 +1073,7 @@ function find(reports, name) {
 	});
 }
 
-// Splits a MemberExpression by the actually dots that seperate each part. 
+// Splits a MemberExpression by the actually dots that seperate each part.
 function splitME(me) {
 	return me.split(/\.\s*(?=[^)]*(?:\(|$))/g);
 }

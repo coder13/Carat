@@ -23,6 +23,7 @@
 
 var chalk = require('chalk'),
 	_ = require('underscore'),
+	hoek = require('hoek'),
 	fs = require('fs'),
 	path = require('path'),
 	esprima = require('esprima'),
@@ -84,7 +85,7 @@ var callbacks = [
 		handler: {cbParam: 1, sourceParam: 0}
 	},
 	{	name: "^require\\('express'\\).createServer\\(.*?\\).get$",
-		handler: {cbParam: 1, sourceParam: 0}
+		handler: {cbParam: 2, sourceParam: 0}
 	}
 ];
 
@@ -185,7 +186,12 @@ var custom = [
 ];
 
 var Scope = function(parent) {
-	parent = require('hoek').clone(parent || {}); // Hoek's clone works better than underscore's
+	if (!parent || !parent.stack)
+		this.stack = [this];
+	else
+		this.stack = parent.stack.concat(this);
+
+	parent = parent || {};
 	var scope = this;
 
 	this.depth = parent.depth ? parent.depth + 1 : 1;
@@ -199,7 +205,10 @@ var Scope = function(parent) {
 	this.file = parent.file;
 
 	// Declare initial variables.
-	this.vars = parent.vars || {};
+	this.vars = {};
+	for (var i in parent.vars) {
+		this.vars[i] = parent.vars[i];
+	}
 	if (!this.vars.module) this.vars.module = {type: 'Object', props: {exports: {type: 'Object', props: {}}}};
 	if (!this.vars.exports) this.vars.exports = this.vars.module.props.exports;
 	if (!this.vars.global) this.vars.global = {type: 'Object', props: {}};
@@ -419,12 +428,14 @@ var Scope = function(parent) {
 					if (ce.callee.value.search(callback.name) != 0)
 						return false;
 
+
 					if (typeof callback.handler == 'object') {
 						var func = ce.arguments[callback.handler.cbParam];
 						if (!func)
 							return false;
 
 						if (func.type == 'Identifier' || func.type == 'MemberExpression') {
+						console.log(pos(right), func);
 							var resolved = scope.resolve(func.value);
 							if (resolved) {
 								func = resolved;
@@ -460,6 +471,8 @@ var Scope = function(parent) {
 
 			// For each argument of the function, if it is a Source and ce is a Sink, report the sink.
 			ce.arguments.forEach(function handleArg(arg) {
+				if (!arg)
+					return;
 				if (arg.type == 'BinaryExpression' || arg.type == 'ConditionalExpression') {
 					handleArg(arg.left);
 					handleArg(arg.right);
@@ -467,8 +480,13 @@ var Scope = function(parent) {
 
 				if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
 					var resolvedArg = scope.resolve(arg.value);
-					if (resolvedArg && arg.value != resolvedArg.value) {
-						handleArg(scope.resolve(arg.value));
+					if (resolvedArg  && arg.value != resolvedArg.value) {
+						if (resolvedArg.type == 'Identifier' || resolvedArg.type == 'MemberExpression') {
+							if (splitME(resolvedArg.value)[0] != splitME(arg.value)[0])
+								handleArg(resolvedArg);
+						} else {
+							handleArg(resolvedArg);
+						}
 					}
 
 					if (arg.source) {
@@ -507,7 +525,7 @@ var Scope = function(parent) {
 	this.resolveExpression['AssignmentExpression'] = function (right) {
 		var assign = scope.resolveAssignment(right);
 		assign.names.forEach(function (name) {
-			var firstScope = Scope.firstScope(name.value) || Scope.Global;
+			var firstScope = scope.firstScope(name.value) || Scope.Global;
 
 			// Block of code that creates a property if it doesn't exist
 			// and in the end, sets the name to the value.
@@ -578,11 +596,12 @@ var Scope = function(parent) {
 				scope.vars[name] = value;
 
 			// Handles reports
-			if (!Flags.verbose && value.source) {
+			if (value.source) {
 				scope.report('SOURCE', node, value);
-			}
 
-			log.call(scope, value.source ? 'SOURCE' : 'VAR', variable, name, value);
+				if (Flags.verbose)
+					log.call(scope, value.source ? 'SOURCE' : 'VAR', variable, name, value);
+			}
 
 		});
 	};
@@ -612,10 +631,14 @@ var Scope = function(parent) {
 
 	this.resolveStatement['IfStatement'] = function (node) {
 		scope.resolveExpression[node.test.type](node.test);
+		var test;
+		if (node.test)
+			test = scope.resolveExpression[node.test.type](node.test);
 		if (node.consequent)
 			scope.traverse(node.consequent.body || [node.consequent]);
 		if (node.alternate)
 			scope.traverse(node.alternate.body);
+		log.call(scope, 'IF', node, node.test ? test : '');
 	};
 
 	this.resolveStatement['DoWhileStatement'] =
@@ -623,24 +646,35 @@ var Scope = function(parent) {
 		var test;
 		if (node.test)
 			test = scope.resolveExpression[node.test.type](node.test);
+
 		scope.traverse(node.body);
 		log.call(scope, 'WHILE', node, node.test ? test : '');
 	};
 
 
 	this.resolveStatement['ForInStatement'] = function (node) {
-		// console.log(node);
+		var name;
+		if (scope.resolveExpression[node.left.type])
+			name = scope.resolveExpression[node.left.type](node.left);
+		else if (node.left.type == 'VariableDeclaration')
+			name = scope.resolveExpression[node.left.declarations[0].id.type](node.left.declarations[0].id);
+
+		(scope.firstScope(name) || Scope.Global).vars[name.value] = scope.resolveExpression[node.right.type](node.right);
+
+		if (node.body)
+			scope.traverse(node.body);
 	};
 
 	this.resolveStatement['ForStatement'] = function (node) {
-		if (node.init) {
+		if (node.init)
 			(scope.resolveStatement[node.init.type] ||
 			scope.resolveExpression[node.init.type])(node.init);
-		} if (node.test) {
+
+		if (node.test)
 			scope.resolveExpression[node.test.type](node.test);
-		} if (node.update) {
+		if (node.update)
 			scope.resolveExpression[node.update.type](node.update);
-		}
+
 		if (node.body)
 			scope.traverse(node.body);
 	};
@@ -691,10 +725,10 @@ var Scope = function(parent) {
 };
 
 // returns the first scope that contains name. If it can't find one, returns false
-Scope.firstScope = function(name) {
-	for (var i = Scope.stack.length - 1; i >= 0; i--) {// because array.reverse reverses the array when we don't want it to
-		if (_.has(Scope.stack[i].vars, name))
-			return Scope.stack[i];
+Scope.prototype.firstScope = function(name) {
+	for (var i = this.stack.length - 1; i >= 0; i--) {// because array.reverse reverses the array when we don't want it to.
+		if (_.has(this.stack[i].vars, name))
+			return this.stack[i];
 	}
 	return false;
 };
@@ -762,7 +796,7 @@ Scope.prototype.onReport = function () {};
 // Returns false if there is no variable with the name.
 Scope.prototype.resolve = function(name) {
 	var split = splitME(name); // should ignore dots inside parenthesis
-	var scope = Scope.firstScope(split[0]) || this;
+	var scope = this.firstScope(split[0]) || this;
 
 	if (name == split) {
 		var value = scope.vars[name];
@@ -901,6 +935,10 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 			if (node.type == 'ExpressionStatement')
 				node = node.expression;
 
+
+			if (scope.pos(node) == 'app.js:249')
+				debugger;
+
 			try {
 				if (node.type == 'CallExpression') {
 					scope.resolveStatement['CallExpression'](node, function () {
@@ -911,7 +949,8 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 
 					});
 				} else if (scope.resolveStatement[node.type]) {
-					scope.resolveStatement[node.type](node);
+					(scope.resolveStatement[node.type] || 
+					scope.resolveExpression[node.type])(node);
 				} else if (Flags.debug) {
 					throw new Error('-undefined statement: ' + node.type);
 				}
@@ -976,7 +1015,7 @@ Scope.prototype.traverse = function(body) {
 	if (!body)
 		return;
 	var scope = this;
-	Scope.stack.push(this);
+	scope.stack.push(this);
 
 	body = body.body || body;
 
@@ -995,11 +1034,15 @@ Scope.prototype.traverse = function(body) {
 		if (node.type == 'ExpressionStatement')
 			node = node.expression;
 
+		if (scope.pos(node) == 'app.js:249')
+			debugger;
+
 		try {
 			if (!node.type)
 				return;
-			if (scope.resolveStatement[node.type]) {
-				scope.resolveStatement[node.type](node);
+			if (scope.resolveStatement[node.type] || scope.resolveExpression[node.type]) {
+				(scope.resolveStatement[node.type] ||
+				scope.resolveExpression[node.type])(node);
 			} else {
 				if (Flags.debug)
 					throw new Error('Undefined Statement: ' + node.type);
@@ -1012,7 +1055,7 @@ Scope.prototype.traverse = function(body) {
 		}
 	});
 
-	Scope.stack.pop();
+	scope.stack.pop();
 };
 
 module.exports = function (flags, options) {

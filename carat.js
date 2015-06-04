@@ -1,6 +1,7 @@
 var esprima = require('esprima'),
 	Scope = require('./scope.js'),
-	chalk = require('chalk');
+	chalk = require('chalk'),
+	_ = require('underscore');
 
 var Sinks = [
 	"^eval$",
@@ -39,16 +40,13 @@ module.exports.check = function(code, file) {
 
 	Scope = Scope(Flags, {Sinks: Sinks, Sources: Sources});
 	Scope.Global = new Scope();
-	Scope.stack = [Scope.Global];
 
 	Scope.prototype.onReport = function (report) {
 		reports.push(report);
 		console.log(chalk.red('[REPORT]'), report.sink.name, report.source.name);
 	};
 
-	var scope = new Scope(Scope.Global);
-
-	scope.file = file;
+	var scope = new Scope(_.extend(Scope.Global, {file: file}));
 
 	scope.traverse(ast.body);
 

@@ -30,31 +30,34 @@ carat.flags({
 
 file = path.resolve(file);
 
-// if (!fs.existsSync(file)) {
-// 	console.error(file, "doesn't exist.");
-// 	process.exit(0);
-// } else if (!fs.lstatSync(file).isFile()) {
-// 	var pkgJson = require(file + '/package.json');
-// 	if (pkgJson.main) {
-// 		file += '/' + pkgJson.main;
-// 	}
+if (!fs.existsSync(file)) {
+	console.error(file, "doesn't exist.");
+	process.exit(1);
+} else if (!fs.lstatSync(file).isFile()) {
+	var pkgJson = require(file + '/package.json');
+	if (pkgJson.main) {
+		file += '/' + pkgJson.main;
+	}
 
-// 	if (!fs.existsSync(file)) {
-// 		console.error(file, "doesn't exist.");
-// 		process.exit(0);
-// 	} else if (!fs.lstatSync(file).isFile()) {
-// 		console.error(file, "is a directory.");
-// 		process.exit(0);
-// 	}
-// }
+	if (!fs.existsSync(file)) {
+		console.error(file, "doesn't exist.");
+		process.exit(1);
+	} else if (!fs.lstatSync(file).isFile()) {
+		console.error(file, "is a directory.");
+		process.exit(1);
+	}
+}
+
 fs.readFile(file, function (err, data) {
 	if (!err) {
-		var reports = carat.check(String(data), file);
-		if (reports.reportedSinks && reports.reportedSinks.length != 0 && !carat.Flags.verbose) {
-			console.log(require('prettyjson').render({'Sinks': reports.reportedSinks}));
+		var checked = carat.check(String(data), file);
+		var reports = checked.reports,
+			sinks 	= checked.reportedSinks;
+		if (sinks && sinks.length != 0 && !carat.Flags.verbose) {
+			console.log(require('prettyjson').render({'Sinks': sinks}));
 		}
-		if (reports.reports && reports.reports.length != 0 && !carat.Flags.verbose) {
-			console.log(require('prettyjson').render({'Reports': reports.reports}));
+		if (reports && reports.length != 0 && !carat.Flags.verbose) {
+			console.log(require('prettyjson').render({'Reports': reports}));
 		} else if (!carat.Flags.verbose) {
 			console.log(chalk.green('No vulneralbilities found'));
 		}

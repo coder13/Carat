@@ -23,7 +23,6 @@
 
 var chalk = require('chalk'),
 	_ = require('underscore'),
-	hoek = require('hoek'),
 	fs = require('fs'),
 	path = require('path'),
 	esprima = require('esprima'),
@@ -72,7 +71,7 @@ var callbacks = [
 				};
 			});
 
-			params[0].source = {name: params[0].value, line: func.scope(node)};
+			params[0].source = {name: params[0].value, line: func.scope.pos(node)};
 			log.call(func.scope, 'SOURCE', node, func.params[0]);
 			func.scope.report('SOURCE', node, func.params[0]);
 
@@ -150,6 +149,7 @@ var custom = [
 				if (lookupTable[pkg])
 					return;
 				lookupTable[pkg] = true;
+
 				var code = fs.readFileSync(pkg);
 				if (!code)
 					return false;
@@ -169,7 +169,6 @@ var custom = [
 					}
 				});
 				parent.vars.exports = parent.vars.module.props.exports;
-				parent.vars.this = {type: 'Object', props: parent.vars, source: false};
 
 				var newScope = new Scope(parent);
 
@@ -204,8 +203,6 @@ var Scope = function(parent) {
 	if (!Scope.baseFile)
 		Scope.baseFile = parent.file;
 
-	// Not used here, want to keep code though.
-	// this.file = Scope.baseFile ? path.relative(Scope.baseFile.split('/').reverse().slice(1).reverse().join('/'), this.file):'';
 	this.file = parent.file;
 
 	// Declare initial variables.
@@ -213,9 +210,6 @@ var Scope = function(parent) {
 	for (var i in parent.vars) {
 		this.vars[i] = parent.vars[i];
 	}
-	// if (!this.vars.module) this.vars.module = {type: 'Object', props: {exports: {type: 'Object', props: {}}}};
-	// if (!this.vars.exports) this.vars.exports = this.vars.module.props.exports;
-	// if (!this.vars.global) this.vars.global = {type: 'Object', props: {}};
 	this.vars.this = {type: 'Object', props: this.vars, source: false};
 
 	this.funcLookupTable = {};
@@ -226,7 +220,6 @@ var Scope = function(parent) {
 			scope.reports.push(i);
 		});
 	}
-
 
 	this.resolveExpression = {};
 
@@ -241,7 +234,6 @@ var Scope = function(parent) {
 	this.resolveExpression['Identifier'] = function (right, resolve) {
 		resolve = (resolve == undefined ? true : false); // default is to not resolve
 		var resolved = scope.resolve(right.name);
-
 
 		// resolve right if resolved is undefined or is exactly right.name (implying that right doesn't exist in vars)
 		// resolve is false (meaning we don't want the resolved value)
@@ -375,7 +367,6 @@ var Scope = function(parent) {
 				scope.report('SOURCE', right, expr.value);
 			}
 			obj[i.key.name] = expr;
-
 		});
 		return {
 			type: 'Object',
@@ -481,7 +472,7 @@ var Scope = function(parent) {
 							func.scope.report('SOURCE', right, params[param].value);
 						}
 
-						func.traverse.call(func, params);
+						func.traverse(params);
 
 						return true;
 					} else if (typeof callback.handler == 'function') {
@@ -500,20 +491,23 @@ var Scope = function(parent) {
 				if (arg.type == 'BinaryExpression' || arg.type == 'ConditionalExpression') {
 					handleArg(arg.left);
 					handleArg(arg.right);
-				}
-
-				if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
+					return;
+				} else if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
 					var resolvedArg = scope.resolve(arg.value);
 					if (resolvedArg) {
 						if (resolvedArg.type == 'Identifier' || resolvedArg.type == 'MemberExpression') {
-							if (splitME(arg.value)[0] = splitME(resolvedArg.value)[0])
-								arg = resolvedArg;
-						} else if (resolvedArg.type == 'BinaryExpression' || resolvedArg.type == 'ConditionalExpression') {
-							if ((resolvedArg.left && arg.value != resolvedArg.left.value) && (resolvedArg.right && arg.value != resolvedArg.right.value))
+							if (splitME(arg.value)[0] != splitME(resolvedArg.value)[0]) {
 								handleArg(resolvedArg);
-						} else {
-							return;
+								return;
+							}
+						} else if (resolvedArg.type == 'BinaryExpression' || resolvedArg.type == 'ConditionalExpression') {
+							if ((resolvedArg.left && arg.value != resolvedArg.left.value) &&
+								(resolvedArg.right && arg.value != resolvedArg.right.value)) {
+								handleArg(resolvedArg);
+								return;
+							}
 						}
+						arg = resolvedArg;
 					}
 
 					if (arg.source) {
@@ -684,7 +678,8 @@ var Scope = function(parent) {
 		else if (node.left.type == 'VariableDeclaration')
 			name = scope.resolveExpression[node.left.declarations[0].id.type](node.left.declarations[0].id);
 
-		(scope.firstScope(name.value) || Scope.Global).vars[name.value] = scope.resolveExpression[node.right.type](node.right);
+		var firstScope = scope.firstScope(name.value) || Scope.Global;
+		firstScope.vars[name.value] = scope.resolveExpression[node.right.type](node.right);
 
 		if (node.body)
 			scope.traverse(node.body);
@@ -694,7 +689,6 @@ var Scope = function(parent) {
 		if (node.init)
 			(scope.resolveStatement[node.init.type] ||
 			scope.resolveExpression[node.init.type])(node.init);
-
 		if (node.test)
 			scope.resolveExpression[node.test.type](node.test);
 		if (node.update)
@@ -733,7 +727,6 @@ var Scope = function(parent) {
 			scope.resolveExpression[node.test.type](node.test);
 		scope.traverse(node.consequent);
 	};
-
 
 	this.resolveStatement['ReturnStatement'] = function (node, sourcCB) {
 		if (!node.argument)
@@ -848,7 +841,7 @@ Scope.prototype.resolve = function(name) {
 		} else if (v.type == 'MemberExpression') {
 			rtrn.value = name.replace(split[0], v.value);
 		} else if (v.type == 'CallExpression' || v.type == 'NewExpression') {
-			rtrn.value = name.replace(split[0], v.value.raw || v.value.callee.value || v.value.callee);
+			rtrn.value = name.replace(split[0], v.value.raw || v.value.callee.value);
 		} else if (v.type == 'BinaryExpression' || v.type == 'ConditionalExpression') {
 			rtrn = v;
 		}
@@ -891,11 +884,7 @@ Scope.prototype.resolveCallExpression = function (node) {
 		});
 	}
 
-	if (node.callee.type == 'FunctionExpression') {
-		ce.callee = this.resolveExpression['FunctionExpression'](node.callee);
-	} else {
-		ce.callee = this.resolveExpression[node.callee.type](node.callee, true);
-	}
+	ce.callee = this.resolveExpression[node.callee.type](node.callee, true);
 
 	ce.raw = (ce.callee.value || ce.callee.name) + '(' + (ce.arguments ? _.map(ce.arguments, function (i) {
 		if (i)
@@ -921,6 +910,7 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 		raw: 'Function',
 		sink: false
 	};
+
 	fe.parentScope = this;
 	fe.scope = new Scope(this);
 
@@ -936,16 +926,14 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 			}
 		}
 
-		// TODO: REWORK
+		// TODO: REWORK 		err...maybe it's fine.
 		var raw = scope.pos(node) + (fe.name || 'Function') + '(' + _.map(_params, function (i) {
 			return require('util').inspect(i);
 		}).join(',') + ')';
 
-		if (scope.funcLookupTable[raw]) {
+		if (scope.funcLookupTable[raw])
 			return;
-		} else {
-			scope.funcLookupTable[raw] = true;
-		}
+		scope.funcLookupTable[raw] = true;
 
 		// Look at function declarations first. Different from assigning a variable to a function.
 		// Create temp variable because we could run this function multiple times
@@ -1037,7 +1025,6 @@ Scope.prototype.traverse = function(body) {
 		return;
 
 	var scope = this;
-	// scope.stack.push(this);
 
 	body = body.body || body;
 
@@ -1074,7 +1061,6 @@ Scope.prototype.traverse = function(body) {
 		}
 	});
 
-	// scope.stack.pop();
 };
 
 module.exports = function (flags, options) {

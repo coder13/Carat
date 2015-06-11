@@ -47,17 +47,16 @@ module.exports.check = function(code, file) {
 		console.log(chalk.red('[REPORT]'), report.sink.name, report.source.name);
 	};
 
-	var vars = {
-		module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
-		global: {type: 'Object', props: {}}
-	};
-	vars.exports = vars.module.props.exports;
-	vars.this = {type: 'Object', props: vars, source: false};
-
-	var scope = new Scope(_.extend(Scope.Global, {
+	var parent = _.extend(Scope.Global, {
 		file: file,
-		vars: vars
-	}));
+		vars: {
+			module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
+			global: {type: 'Object', props: {}}
+		}
+	});
+	parent.vars.exports = parent.vars.module.props.exports;
+
+	var scope = new Scope(parent);
 
 	scope.traverse(ast.body);
 

@@ -29,6 +29,7 @@ module.exports.flags = function (flags) {
 	Flags.recursive = !!(flags.recursive === undefined ? Flags : flags).recursive;
 	Flags.debug = !!(flags.debug === undefined ? Flags : flags).debug;
 	Flags.verbose = !!(flags.verbose === undefined ? Flags : flags).verbose;
+	Flags.sinks = !!(flags.sinks === undefined ? Flags : flags).sinks;
 };
 
 module.exports.check = function(code, file) {
@@ -60,7 +61,10 @@ module.exports.check = function(code, file) {
 
 	scope.traverse(ast.body);
 
-	return reports;
+	return {
+		reports: reports,
+		reportedSinks: Scope.reportedSinks
+	};
 };
 
 function getAst(code, location) {

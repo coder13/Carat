@@ -72,7 +72,7 @@ var callbacks = [
 				};
 			});
 
-			params[0].source = true;
+			params[0].source = {name: params[0].value, line: func.scope(node)};
 			log.call(func.scope, 'SOURCE', node, func.params[0]);
 			func.scope.report('SOURCE', node, func.params[0]);
 
@@ -282,11 +282,11 @@ var Scope = function(parent) {
 				// Determines if a source.
 				resolved = scope.resolve(splitME(me.value)[0]);
 				if (resolved && resolved.source)
-					me.source = true;
+					me.source = {name: me.value, line: scope.pos(right)};
 				else
 					_.each(Sources, function (i) {
 						if (me.value.search(i) == 0) {
-							me.source = true;
+							me.source = {name: me.value, line: scope.pos(right)};
 							return true;
 						}
 					});
@@ -388,7 +388,7 @@ var Scope = function(parent) {
 		var ce = scope.resolveCallExpression(right),
 			isSink = false;
 
-		// Quick resolve iff type is an Identifier or a memberExpression
+		// Quick resolve if type is an Identifier or a memberExpression
 		if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
 			var resolved = scope.resolve(ce.callee.value);
 			if (resolved) {
@@ -412,7 +412,9 @@ var Scope = function(parent) {
 			// Determines if ce is a sink.
 			for (var i in Sinks) {
 				if (ce.callee.value.search(Sinks[i]) == 0) {
-					isSink = true;
+					isSink = {raw: ce.callee.value, line: scope.pos(right)};
+					if (Flags.sinks)
+						Scope.reportedSinks = Scope.reportedSinks.concat(isSink);
 					// If sinkCB is defined, this call expression is inside of a function.
 					// We want the function to know that there is a sink inside of it
 					// and to have it mark itself as a sink.
@@ -475,7 +477,7 @@ var Scope = function(parent) {
 							param = params.length - 1;
 						if (params[param]) {
 							// Mark the bad param as the source
-							params[param].source = true;
+							params[param].source = {name: params[param].value, line: scope.pos(right)};
 							func.scope.report('SOURCE', right, params[param].value);
 						}
 
@@ -746,6 +748,8 @@ var Scope = function(parent) {
 	};
 
 };
+
+Scope.reportedSinks = [];
 
 // returns the first scope that contains name. If it can't find one, returns false
 Scope.prototype.firstScope = function(name) {
@@ -1077,6 +1081,7 @@ module.exports = function (flags, options) {
 	Flags.recursive = (flags.recursive == undefined ? Flags : flags).recursive;
 	Flags.debug = (flags.debug == undefined ? Flags : flags).debug;
 	Flags.verbose = (flags.verbose == undefined ? Flags : flags).verbose;
+	Flags.sinks = (flags.sinks == undefined ? Flags : flags).sinks;
 
 	if (options) {
 		if (options.Sinks != undefined) {

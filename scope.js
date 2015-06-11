@@ -35,19 +35,17 @@ var Flags = {
 	verbose: false
 };
 
-var Sources = ['^process.argv.*$']; // default list of sources
+var Sources = ['^process.*$']; // default list of sources
 var Sinks = ['^eval$'];			// default list of sinks
 
 // So as to not be parsing the same file twice. We want to parse once,
-// possibly traverse with different argumements multiple times.
+// possibly traverse with different arguments multiple times.
 var lookupTable = {};
-
-// require('hapi').Server(asd, asjdk, asd).route
 
 // List of CallExpressions that have evil callbacks.
 // cbParam is where the callback is and sourceParam is the argument in the callback that is the source
 var callbacks = [
-	{	name: "^require\('fs'\).readFile$",
+	{	name: "^require\\('fs'\\).readFile$",
 		handler: {cbParam: 2, sourceParam: 1}
 	},
 	{	// (nequire('hapi').server()).route()
@@ -82,10 +80,10 @@ var callbacks = [
 		}
 	},
 	{	name: "^require\\('express'\\).createServer\\(.*?\\).post$",
-		handler: {cbParam: 1, sourceParam: 0}
+		handler: {cbParam: 'last', sourceParam: 0}
 	},
 	{	name: "^require\\('express'\\).createServer\\(.*?\\).get$",
-		handler: {cbParam: 2, sourceParam: 0}
+		handler: {cbParam: 'last', sourceParam: 0}
 	}
 ];
 
@@ -163,9 +161,17 @@ var custom = [
 				if (Flags.verbose && !Flags.json)
 					console.log(chalk.yellow(' ---- '), pkg);
 
-				var newScope = new Scope({
+				var parent = _.extend(Scope.Global, {
 					file: pkg,
+					vars: {
+						module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
+						global: {type: 'Object', props: {}}
+					}
 				});
+				parent.vars.exports = parent.vars.module.props.exports;
+				parent.vars.this = {type: 'Object', props: parent.vars, source: false};
+
+				var newScope = new Scope(parent);
 
 				newScope.traverse(ast);
 
@@ -180,18 +186,16 @@ var custom = [
 
 			});
 
+
 			return r;
 		}
 	}
 ];
 
 var Scope = function(parent) {
-	if (!parent || !parent.stack)
-		this.stack = [this];
-	else
-		this.stack = parent.stack.concat(this);
-
 	parent = parent || {};
+	this.parent = parent;
+
 	var scope = this;
 
 	this.depth = parent.depth ? parent.depth + 1 : 1;
@@ -209,9 +213,9 @@ var Scope = function(parent) {
 	for (var i in parent.vars) {
 		this.vars[i] = parent.vars[i];
 	}
-	if (!this.vars.module) this.vars.module = {type: 'Object', props: {exports: {type: 'Object', props: {}}}};
-	if (!this.vars.exports) this.vars.exports = this.vars.module.props.exports;
-	if (!this.vars.global) this.vars.global = {type: 'Object', props: {}};
+	// if (!this.vars.module) this.vars.module = {type: 'Object', props: {exports: {type: 'Object', props: {}}}};
+	// if (!this.vars.exports) this.vars.exports = this.vars.module.props.exports;
+	// if (!this.vars.global) this.vars.global = {type: 'Object', props: {}};
 	this.vars.this = {type: 'Object', props: this.vars, source: false};
 
 	this.funcLookupTable = {};
@@ -238,9 +242,10 @@ var Scope = function(parent) {
 		resolve = (resolve == undefined ? true : false); // default is to not resolve
 		var resolved = scope.resolve(right.name);
 
+
 		// resolve right if resolved is undefined or is exactly right.name (implying that right doesn't exist in vars)
 		// resolve is false (meaning we don't want the resolved value)
-		if ((!resolved || resolved.value == right.name) || !resolve) {
+		if (!resolved || !resolve) {
 			var isSource = false;
 
 			_.each(Sources, function (i) {
@@ -265,7 +270,7 @@ var Scope = function(parent) {
 	};
 
 	this.resolveExpression['MemberExpression'] = function (right, resolve) {
-		resolve = (resolve == undefined ? true : false);
+		resolve = (resolve == undefined ? true : false); // resolved should be true by default
 		var me = scope.resolveMemberExpression(right);
 		me.type = right.type;
 		var resolved = scope.resolve(me.value);
@@ -286,7 +291,6 @@ var Scope = function(parent) {
 						}
 					});
 			}
-
 			return me;
 		} else {
 			return resolved;
@@ -299,6 +303,15 @@ var Scope = function(parent) {
 			value: 'this',
 			source: false
 		};
+	};
+
+	this.resolveExpression['SequenceExpression'] = function (node) {
+		var rtrn;
+		node.expressions.forEach(function (expr) {
+			rtrn = (scope.resolveExpression[expr.type] ||
+			scope.resolveStatement[expr.type])(expr);
+		});
+		return rtrn;
 	};
 
 	this.resolveExpression['ArrayExpression'] = function (right) {
@@ -379,7 +392,9 @@ var Scope = function(parent) {
 		if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
 			var resolved = scope.resolve(ce.callee.value);
 			if (resolved) {
-				ce.raw = ce.raw.replace(ce.callee.value, resolved.value);
+				if (resolved.type == 'Identifier' || resolved.type == 'MemberExpression') {
+					ce.raw = ce.raw.replace(ce.callee.value, resolved.value);
+				}
 				ce.callee = resolved;
 			}
 		}
@@ -403,6 +418,7 @@ var Scope = function(parent) {
 					// and to have it mark itself as a sink.
 					if (sinkCB)
 						sinkCB(ce.callee.value);
+					break;
 				}
 			}
 
@@ -416,9 +432,9 @@ var Scope = function(parent) {
 					return true;
 				}
 			});
-			if (rtrn)
+			if (rtrn) {
 				return rtrn;
-
+			}
 		}
 
 		if (ce.arguments && ce.arguments.length != 0) {
@@ -428,19 +444,21 @@ var Scope = function(parent) {
 					if (ce.callee.value.search(callback.name) != 0)
 						return false;
 
-
 					if (typeof callback.handler == 'object') {
-						var func = ce.arguments[callback.handler.cbParam];
+						var cbParam = callback.handler.cbParam == 'last' ? ce.arguments.length - 1 : callback.handler.cbParam;
+						var func = ce.arguments[cbParam];
 						if (!func)
 							return false;
 
 						if (func.type == 'Identifier' || func.type == 'MemberExpression') {
-						console.log(pos(right), func);
 							var resolved = scope.resolve(func.value);
 							if (resolved) {
 								func = resolved;
 							}
 						}
+
+						if (func.type != 'Function')
+							return false;
 
 						// generate a list of default arguments for the parameters.
 						// TODO: abstract this into a convienence function
@@ -452,14 +470,16 @@ var Scope = function(parent) {
 							};
 						});
 
-						if (params[callback.handler.sourceParam]) {
+						var param = callback.handler.sourceParam;
+						if (callback.handler.sourceParam == 'last')
+							param = params.length - 1;
+						if (params[param]) {
 							// Mark the bad param as the source
-							params[callback.handler.sourceParam].source = true;
-							func.scope.report('SOURCE', right, params[callback.handler.sourceParam].value);
+							params[param].source = true;
+							func.scope.report('SOURCE', right, params[param].value);
 						}
 
-						if (func.type == 'Function')
-							func.traverse.call(func, params);
+						func.traverse.call(func, params);
 
 						return true;
 					} else if (typeof callback.handler == 'function') {
@@ -470,6 +490,8 @@ var Scope = function(parent) {
 			}
 
 			// For each argument of the function, if it is a Source and ce is a Sink, report the sink.
+			// TODO: Instead, keep a list here of all the args that have been handled so as to not
+			// attempt to handle the same more than once.
 			ce.arguments.forEach(function handleArg(arg) {
 				if (!arg)
 					return;
@@ -480,12 +502,15 @@ var Scope = function(parent) {
 
 				if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
 					var resolvedArg = scope.resolve(arg.value);
-					if (resolvedArg  && arg.value != resolvedArg.value) {
+					if (resolvedArg) {
 						if (resolvedArg.type == 'Identifier' || resolvedArg.type == 'MemberExpression') {
-							if (splitME(resolvedArg.value)[0] != splitME(arg.value)[0])
+							if (splitME(arg.value)[0] = splitME(resolvedArg.value)[0])
+								arg = resolvedArg;
+						} else if (resolvedArg.type == 'BinaryExpression' || resolvedArg.type == 'ConditionalExpression') {
+							if ((resolvedArg.left && arg.value != resolvedArg.left.value) && (resolvedArg.right && arg.value != resolvedArg.right.value))
 								handleArg(resolvedArg);
 						} else {
-							handleArg(resolvedArg);
+							return;
 						}
 					}
 
@@ -561,7 +586,7 @@ var Scope = function(parent) {
 					n.props = {};
 				n.props[splitName[i]] = assign.value; // Now assign the last to the value.
 			}
-			log.call(firstScope, 'ASSIGN', right, name, assign.value);
+			log.call(scope, 'ASSIGN', right, name, assign.value);
 		});
 		return assign.value;
 	};
@@ -606,11 +631,9 @@ var Scope = function(parent) {
 		});
 	};
 
-	this.resolveStatement['SequenceExpression'] = function (node) {
-		node.expressions.forEach(function (expr) {
-			scope.resolveStatement[expr.type](expr);
-		});
-	};
+	this.resolveStatement['ConditionalExpression'] = this.resolveExpression['ConditionalExpression'];
+
+	this.resolveStatement['SequenceExpression'] = this.resolveExpression['SequenceExpression'];
 
 	this.resolveStatement['LogicalExpression'] = scope.resolveExpression['LogicalExpression'];
 
@@ -655,11 +678,11 @@ var Scope = function(parent) {
 	this.resolveStatement['ForInStatement'] = function (node) {
 		var name;
 		if (scope.resolveExpression[node.left.type])
-			name = scope.resolveExpression[node.left.type](node.left);
+			name = scope.resolveExpression[node.left.type](node.left, false);
 		else if (node.left.type == 'VariableDeclaration')
 			name = scope.resolveExpression[node.left.declarations[0].id.type](node.left.declarations[0].id);
 
-		(scope.firstScope(name) || Scope.Global).vars[name.value] = scope.resolveExpression[node.right.type](node.right);
+		(scope.firstScope(name.value) || Scope.Global).vars[name.value] = scope.resolveExpression[node.right.type](node.right);
 
 		if (node.body)
 			scope.traverse(node.body);
@@ -726,11 +749,13 @@ var Scope = function(parent) {
 
 // returns the first scope that contains name. If it can't find one, returns false
 Scope.prototype.firstScope = function(name) {
-	for (var i = this.stack.length - 1; i >= 0; i--) {// because array.reverse reverses the array when we don't want it to.
-		if (_.has(this.stack[i].vars, name))
-			return this.stack[i];
+	var scope = this;
+	while (!_.has(scope.vars, splitME(name)[0])) {
+		if (!scope.parent)
+			return false;
+		scope = scope.parent;
 	}
-	return false;
+	return !_.has(scope.vars, splitME(name)[0]) ? scope : false;
 };
 
 Scope.prototype.report = function (type, node, source, name) {
@@ -780,10 +805,6 @@ Scope.prototype.report = function (type, node, source, name) {
 					name: name,
 					line: p
 				});
-
-				// Flush the report. After finding the sink, we don't want to track it anymore.
-				scope.reports.splice(scope.reports.indexOf(report), 1);
-				scope.onReport(report);
 			}
 
 			return false;
@@ -810,22 +831,22 @@ Scope.prototype.resolve = function(name) {
 		var rtrn = {
 			type: 'MemberExpression',
 			value: name,
-			source: v.source,
+			source: !!v.source,
 		};
 
 		if (v.type == 'Object') {
 			for (var i = 1; i < split.length; i++) {
-				if (!v.props || !v.props[split[i]]) {
-					rtrn = false;
-					return true;
+				if (v.props && v.props[split[i]]) {
+					v = v.props[split[i]];
 				}
-				v = v.props[split[i]];
 			}
 			rtrn = v;
 		} else if (v.type == 'MemberExpression') {
 			rtrn.value = name.replace(split[0], v.value);
 		} else if (v.type == 'CallExpression' || v.type == 'NewExpression') {
 			rtrn.value = name.replace(split[0], v.value.raw || v.value.callee.value || v.value.callee);
+		} else if (v.type == 'BinaryExpression' || v.type == 'ConditionalExpression') {
+			rtrn = v;
 		}
 
 		return rtrn;
@@ -872,7 +893,7 @@ Scope.prototype.resolveCallExpression = function (node) {
 		ce.callee = this.resolveExpression[node.callee.type](node.callee, true);
 	}
 
-	ce.raw = (ce.callee.value||ce.callee.name) + '(' + (ce.arguments ? _.map(ce.arguments, function (i) {
+	ce.raw = (ce.callee.value || ce.callee.name) + '(' + (ce.arguments ? _.map(ce.arguments, function (i) {
 		if (i)
 			return i.value || i.raw || i;
 	}).join(', ') : '') + ')';
@@ -899,6 +920,7 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 	fe.parentScope = this;
 	fe.scope = new Scope(this);
 
+
 	fe.traverse = function(_params) {
 		var scope = this.scope;
 		if (!node || node.body.length <= 0)
@@ -911,8 +933,8 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 		}
 
 		// TODO: REWORK
-		var raw = scope.pos(node) + (fe.name||'Function') + '(' + _.map(_params, function (i) {
-			return require('util').inspect(i); 
+		var raw = scope.pos(node) + (fe.name || 'Function') + '(' + _.map(_params, function (i) {
+			return require('util').inspect(i);
 		}).join(',') + ')';
 
 		if (scope.funcLookupTable[raw]) {
@@ -921,12 +943,11 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 			scope.funcLookupTable[raw] = true;
 		}
 
-
 		// Look at function declarations first. Different from assigning a variable to a function.
 		// Create temp variable because we could run this function multiple times
 		var newBody = _.reject(this.body, function (node) {
 			if (node.type == 'FunctionDeclaration') {
-				func = scope.resolveStatement['FunctionDeclaration'](node);
+				scope.resolveStatement['FunctionDeclaration'](node);
 				return true;
 			}
 		});
@@ -934,10 +955,6 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 		newBody.forEach(function(node) {
 			if (node.type == 'ExpressionStatement')
 				node = node.expression;
-
-
-			if (scope.pos(node) == 'app.js:249')
-				debugger;
 
 			try {
 				if (node.type == 'CallExpression') {
@@ -1014,8 +1031,9 @@ Scope.prototype.pos = function(node) {
 Scope.prototype.traverse = function(body) {
 	if (!body)
 		return;
+
 	var scope = this;
-	scope.stack.push(this);
+	// scope.stack.push(this);
 
 	body = body.body || body;
 
@@ -1033,9 +1051,6 @@ Scope.prototype.traverse = function(body) {
 		// We don't want expression statements, we want the expressions they wrap
 		if (node.type == 'ExpressionStatement')
 			node = node.expression;
-
-		if (scope.pos(node) == 'app.js:249')
-			debugger;
 
 		try {
 			if (!node.type)
@@ -1055,7 +1070,7 @@ Scope.prototype.traverse = function(body) {
 		}
 	});
 
-	scope.stack.pop();
+	// scope.stack.pop();
 };
 
 module.exports = function (flags, options) {

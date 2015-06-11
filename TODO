@@ -1,5 +1,5 @@
 Soonish:
- - Flesh out callbacks more
+ - Work on Source and Sinks property; Move from being boolean to containing information I.E. File, line, name of sink.
  - Improve tests
 
 Far off:

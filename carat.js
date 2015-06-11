@@ -11,12 +11,12 @@ var Sinks = [
 	"^clearInterval$",
 	"^require\\('child_process'\\).exec$",
 	"^require\\('http'\\).get$",
-	"^require\\('fs'\\).*?$",
-	"^require\\('express'\\).*?$",
-	"^require\\('hapi'\\).*?$",
+	"^require\\('fs'\\).*$",
+	"^require\\('express'\\).*$",
+	"^require\\('hapi'\\).*$",
 ];
 
-var Sources = ['^process.argv.*$'];
+var Sources = ['^process.*$'];
 
 var Flags = module.exports.Flags = {
 	recursive: false,
@@ -39,14 +39,24 @@ module.exports.check = function(code, file) {
 	var reports = [];
 
 	Scope = Scope(Flags, {Sinks: Sinks, Sources: Sources});
-	Scope.Global = new Scope();
+	Scope.Global = new Scope({depth: 0});
 
 	Scope.prototype.onReport = function (report) {
 		reports.push(report);
 		console.log(chalk.red('[REPORT]'), report.sink.name, report.source.name);
 	};
 
-	var scope = new Scope(_.extend(Scope.Global, {file: file}));
+	var vars = {
+		module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
+		global: {type: 'Object', props: {}}
+	};
+	vars.exports = vars.module.props.exports;
+	vars.this = {type: 'Object', props: vars, source: false};
+
+	var scope = new Scope(_.extend(Scope.Global, {
+		file: file,
+		vars: vars
+	}));
 
 	scope.traverse(ast.body);
 
@@ -64,6 +74,7 @@ function getAst(code, location) {
 		return esprima.parse(code, options);
 	} catch (e) {
 		console.error("There was an error with the code when parsing.");
+		console.error(e.stack);
 		return false;
 	}
 }

@@ -81,7 +81,13 @@ var callbacks = [
 	{	name: "^require\\('express'\\).createServer\\(.*?\\).post$",
 		handler: {cbParam: 'last', sourceParam: 0}
 	},
+	{	name: "^require\\('express'\\).Router\\(.*?\\).post$",
+		handler: {cbParam: 'last', sourceParam: 0}
+	},
 	{	name: "^require\\('express'\\).createServer\\(.*?\\).get$",
+		handler: {cbParam: 'last', sourceParam: 0}
+	},
+	{	name: "^require\\('express'\\).Router\\(.*?\\).get$",
 		handler: {cbParam: 'last', sourceParam: 0}
 	}
 ];
@@ -443,6 +449,7 @@ var Scope = function(parent) {
 						if (!func)
 							return false;
 
+
 						if (func.type == 'Identifier' || func.type == 'MemberExpression') {
 							var resolved = scope.resolve(func.value);
 							if (resolved) {
@@ -594,8 +601,21 @@ var Scope = function(parent) {
 		BreakStatement: function() {},		// ^^
 		EmptyStatement: function() {},		// ^^
 		Literal: function () {},			// Example: 'use strict';
-		MemberExpression: function () {}	// Standalone MemberExpressions; Does nothing.
+		MemberExpression: function () {},	// Standalone MemberExpressions; Does nothing.
+		LabeledStatement: function () {},
 	};
+
+	this.resolveStatement['BlockStatement'] = function (node) {
+		node.body.forEach(function (node) {
+			if (!node)
+				return;
+
+			if (node.expression)
+				node = node.expression;
+
+			scope.resolveStatement[node.type](node);
+		});
+	}
 
 	this.resolveStatement['VariableDeclaration'] = function (node) {
 		node.declarations.forEach(function (variable) {
@@ -676,7 +696,7 @@ var Scope = function(parent) {
 		if (scope.resolveExpression[node.left.type])
 			name = scope.resolveExpression[node.left.type](node.left, false);
 		else if (node.left.type == 'VariableDeclaration')
-			name = scope.resolveExpression[node.left.declarations[0].id.type](node.left.declarations[0].id);
+			name = scope.resolveExpression[node.left.declarations[0].id.type](node.left.declarations[0].id, false);
 
 		var firstScope = scope.firstScope(name.value) || Scope.Global;
 		firstScope.vars[name.value] = scope.resolveExpression[node.right.type](node.right);
@@ -916,9 +936,9 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 
 
 	fe.traverse = function(_params) {
-		var scope = this.scope;
 		if (!node || node.body.length <= 0)
 			return;
+		var scope = this.scope;
 
 		if (_params) {
 			for (var i = 0; i < _params.length; i++) {
@@ -1031,13 +1051,15 @@ Scope.prototype.traverse = function(body) {
 	// Traverse the function declarations first and get rid of them.
 	// These get priority when scanning and we also don't want to scan them twice.
 	body = _.reject(body, function (node) {
-		if (node.type == 'FunctionDeclaration') {
+		if (node && node.type == 'FunctionDeclaration') {
 			scope.resolveStatement['FunctionDeclaration'](node); //todo
 			return true;
 		}
 	});
 
 	body.forEach(function(node) {
+		if (!node)
+			return;
 		// ExpressionStatements simply wrap other statements.
 		// We don't want expression statements, we want the expressions they wrap
 		if (node.type == 'ExpressionStatement')

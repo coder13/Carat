@@ -51,7 +51,7 @@ var callbacks = [
 		name: "require\\('http'\\).get",
 		handler: {cbParam: 1, sourceParam: 1}
 	},
-	{	// (nequire('hapi').server()).route()
+	{	// (require('hapi').server()).route()
 		name: "^require\\('hapi'\\).Server\\(.*?\\).route$",
 		handler: function (node, ce) {
 			var func;
@@ -75,7 +75,7 @@ var callbacks = [
 				};
 			});
 
-			params[0].source = {name: params[0].value, line: func.scope.pos(node)};
+			params[0].source = {name: params[0].value, line: 'file:scope.pos///' + func.scope.pos(node)};
 			log.call(func.scope, 'SOURCE', node, func.params[0]);
 			func.scope.report('SOURCE', node, func.params[0]);
 
@@ -279,11 +279,11 @@ var Scope = function(parent) {
 				// Determines if a source.
 				resolved = scope.resolve(splitME(me.value)[0]);
 				if (resolved && resolved.source)
-					me.source = {name: me.value, line: scope.pos(right)};
+					me.source = {name: me.value, line: 'file:///' + scope.pos(right)};
 				else
 					_.each(Sources, function (i) {
 						if (me.value.search(i) == 0) {
-							me.source = {name: me.value, line: scope.pos(right)};
+							me.source = {name: me.value, line: 'file:///' + scope.pos(right)};
 							return true;
 						}
 					});
@@ -408,7 +408,7 @@ var Scope = function(parent) {
 			// Determines if ce is a sink.
 			for (var i in Sinks) {
 				if (ce.callee.value.search(Sinks[i]) == 0) {
-					isSink = {raw: ce.callee.value, line: scope.pos(right)};
+					isSink = {raw: ce.callee.value, line: 'file:///' + scope.pos(right)};
 					if (Flags.sinks)
 						Scope.reportedSinks = Scope.reportedSinks.concat(isSink);
 					// If sinkCB is defined, this call expression is inside of a function.
@@ -474,7 +474,7 @@ var Scope = function(parent) {
 							param = params.length - 1;
 						if (params[param]) {
 							// Mark the bad param as the source
-							params[param].source = {name: params[param].value, line: scope.pos(right)};
+							params[param].source = {name: params[param].value, line: 'file:///' + scope.pos(right)};
 							func.scope.report('SOURCE', right, params[param].value);
 						}
 
@@ -780,7 +780,7 @@ Scope.prototype.report = function (type, node, source, name) {
 
 	if (Flags.debug)
 		console.log(chalk.red(type), chalk.grey(this.pos(node)), chalk.blue(source.value || source), name || '');
-	var p = scope.pos(node);
+	var p = 'file:///' + scope.pos(node);
 	switch (type) {
 		case 'SOURCE':
 			var report = find(scope.reports, source);
@@ -1006,7 +1006,6 @@ Scope.prototype.resolveAssignment = function(node) {
 			names: assign.names.concat(scope.resolveExpression[node.left.type](node.left, false)),
 			value: assign.value
 		};
-
 	} else {
 		return {
 			names: [scope.resolveExpression[node.left.type](node.left, false)],
@@ -1021,7 +1020,8 @@ Scope.prototype.resolvePath = function(file, cb) {
 	try {
 		pkg = resolve.sync(file, {basedir: String(this.file).split('/').slice(0, -1).join('/')});
 	} catch (e) {
-		console.error(chalk.red('Could not find ' + file));
+		if (!Flags.json)
+			console.error(chalk.red('Could not find ' + file));
 		return false;
 	}
 
@@ -1090,6 +1090,7 @@ module.exports = function (flags, options) {
 	Flags.debug = (flags.debug == undefined ? Flags : flags).debug;
 	Flags.verbose = (flags.verbose == undefined ? Flags : flags).verbose;
 	Flags.sinks = (flags.sinks == undefined ? Flags : flags).sinks;
+	Flags.json = (flags.json == undefined ? Flags : flags).json;
 
 	if (options) {
 		if (options.Sinks != undefined) {

@@ -22,10 +22,11 @@ if (!file) {
 var args = yargs.argv;
 carat.flags({
 	recursive: !!args.r,
-	debug: !!args.d || true,
+	debug: !!args.d,
 	verbose: !!args.v,
 	pretty: !!args.p,
-	sinks: !!args.s
+	sinks: !!args.s,
+	json: !!args.j
 });
 
 file = path.resolve(file);
@@ -53,13 +54,17 @@ fs.readFile(file, function (err, data) {
 		var checked = carat.check(String(data), file);
 		var reports = checked.reports,
 			sinks 	= checked.reportedSinks;
-		if (sinks && sinks.length != 0 && !carat.Flags.verbose) {
-			console.log(require('prettyjson').render({'Sinks': sinks}));
-		}
-		if (reports && reports.length != 0 && !carat.Flags.verbose) {
-			console.log(require('prettyjson').render({'Reports': reports}));
-		} else if (!carat.Flags.verbose) {
-			console.log(chalk.green('No vulneralbilities found'));
+		if (carat.Flags.json) {
+			console.log(checked)
+		} else {
+			if (sinks && sinks.length != 0) {
+				console.log(require('prettyjson').render({'Sinks': sinks}));
+			}
+			if (reports && reports.length != 0) {
+				console.log(require('prettyjson').render({'Reports': reports}));
+			} else {
+				console.log(chalk.green('No vulneralbilities found'));
+			}
 		}
 	}
 });

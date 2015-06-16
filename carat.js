@@ -22,7 +22,8 @@ var Flags = module.exports.Flags = {
 	recursive: false,
 	debug: true,
 	verbose: false,
-	pretty: false
+	pretty: false,
+	json: false
 };
 
 module.exports.flags = function (flags) {
@@ -30,6 +31,7 @@ module.exports.flags = function (flags) {
 	Flags.debug = !!(flags.debug === undefined ? Flags : flags).debug;
 	Flags.verbose = !!(flags.verbose === undefined ? Flags : flags).verbose;
 	Flags.sinks = !!(flags.sinks === undefined ? Flags : flags).sinks;
+	Flags.json = !!(flags.json === undefined ? Flags : flags).json;
 };
 
 module.exports.check = function(code, file) {

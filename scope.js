@@ -47,6 +47,10 @@ var callbacks = [
 	{	name: "^require\\('fs'\\).readFile$",
 		handler: {cbParam: 2, sourceParam: 1}
 	},
+	{
+		name: "require\\('http'\\).get",
+		handler: {cbParam: 1, sourceParam: 1}
+	},
 	{	// (nequire('hapi').server()).route()
 		name: "^require\\('hapi'\\).Server\\(.*?\\).route$",
 		handler: function (node, ce) {
@@ -153,7 +157,7 @@ var custom = [
 				// Lookup table is a list of files already looked at.
 				// In static analysis, we only want to look at each file once.
 				if (lookupTable[pkg])
-					return;
+					return lookupTable[pkg];
 				lookupTable[pkg] = true;
 
 				var code = fs.readFileSync(pkg);
@@ -177,7 +181,6 @@ var custom = [
 				parent.vars.exports = parent.vars.module.props.exports;
 
 				var newScope = new Scope(parent);
-
 				newScope.traverse(ast);
 
 				if (newScope.vars.module && newScope.vars.module.props.exports.props) {
@@ -186,12 +189,8 @@ var custom = [
 					if (Flags.json) {
 						scope.reports.push(newScope.reports);
 					}
-
 				}
-
 			});
-
-
 			return r;
 		}
 	}

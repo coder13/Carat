@@ -35,7 +35,7 @@ var Flags = {
 };
 
 var Sources = ['^process.*$']; // default list of sources
-var Sinks = ['^eval$'];			// default list of sinks
+var Sinks = ['^eval$'];		   // default list of sinks
 
 // So as to not be parsing the same file twice. We want to parse once,
 // possibly traverse with different arguments multiple times.
@@ -490,11 +490,11 @@ var Scope = function(parent) {
 			}
 
 			// For each argument of the function, if it is a Source and ce is a Sink, report the sink.
-			// TODO: Instead, keep a list here of all the args that have been handled so as to not
-			// attempt to handle the same more than once.
+			var argLookupTable = {};
 			ce.arguments.forEach(function handleArg(arg) {
 				if (!arg)
 					return;
+
 				if (arg.type == 'BinaryExpression' || arg.type == 'ConditionalExpression') {
 					handleArg(arg.left);
 					handleArg(arg.right);
@@ -503,7 +503,8 @@ var Scope = function(parent) {
 					var resolvedArg = scope.resolve(arg.value);
 					if (resolvedArg) {
 						if (resolvedArg.type == 'Identifier' || resolvedArg.type == 'MemberExpression') {
-							if (splitME(arg.value)[0] != splitME(resolvedArg.value)[0]) {
+							if (argLookupTable[require('util').inspect(arg)]) {
+								argLookupTable[require('util').inspect(arg)] = arg;
 								handleArg(resolvedArg);
 								return;
 							}
@@ -1052,7 +1053,7 @@ Scope.prototype.traverse = function(body) {
 	// These get priority when scanning and we also don't want to scan them twice.
 	body = _.reject(body, function (node) {
 		if (node && node.type == 'FunctionDeclaration') {
-			scope.resolveStatement['FunctionDeclaration'](node); //todo
+			scope.resolveStatement['FunctionDeclaration'](node);
 			return true;
 		}
 	});

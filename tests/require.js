@@ -1,3 +1,2 @@
 var a = require('./lib/a.js');
-
-a.e(a.s); //a.b.e == eval
+a.e(process.argv[2]);

@@ -1,6 +1,3 @@
-module.exports.e = eval;
+var e = eval;
 
-require('fs').readFile('blah', 'utf8', function(err, data) {
-	module.exports.s = data;
-
-});
+module.exports.e = e;

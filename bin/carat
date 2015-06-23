@@ -20,13 +20,20 @@ if (!file) {
 }
 
 var args = yargs.argv;
-carat.flags({
+
+// var externalCallbacks = args.c;
+
+carat.configure({
 	recursive: !!args.r,
 	debug: !!args.d,
 	verbose: !!args.v,
 	pretty: !!args.p,
 	sinks: !!args.s,
 	json: !!args.j
+}, {
+	Sources: [],
+	Sinks: [],
+	Callbacks: []
 });
 
 file = path.resolve(file);
@@ -48,6 +55,7 @@ if (!fs.existsSync(file)) {
 		process.exit(1);
 	}
 }
+
 
 fs.readFile(file, function (err, data) {
 	if (!err) {

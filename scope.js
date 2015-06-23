@@ -18,7 +18,6 @@
 		Has a source property containing the name of the source and its line number and file it was born
 		Has a sink property contain the name of the sink and its line number and file it was executed.
 		Also has a chain property which is a list of all the statements that affected it.
-
 */
 
 var chalk = require('chalk'),
@@ -85,14 +84,24 @@ var callbacks = [
 	{	name: "^require\\('express'\\).createServer\\(.*?\\).post$",
 		handler: {cbParam: 'last', sourceParam: 0}
 	},
-	{	name: "^require\\('express'\\).Router\\(.*?\\).post$",
+	{	name: "^require\\('express'\\).createServer\\(.*?\\).get$",
 		handler: {cbParam: 'last', sourceParam: 0}
 	},
-	{	name: "^require\\('express'\\).createServer\\(.*?\\).get$",
+	{	name: "^require\\('express'\\).Router\\(.*?\\).post$",
 		handler: {cbParam: 'last', sourceParam: 0}
 	},
 	{	name: "^require\\('express'\\).Router\\(.*?\\).get$",
 		handler: {cbParam: 'last', sourceParam: 0}
+	},
+	{	name: "^require\\('express'\\)\\(.*?\\).post$",
+		handler: {cbParam: 'last', sourceParam: 0}
+	},
+	{	name: "^require\\('express'\\)\\(.*?\\).get$",
+		handler: {cbParam: 'last', sourceParam: 0}
+	},
+	{
+		name: "^require\\('mongodb'\\).MongoClient.connect$",
+		handler: {cbParam: 1, sourceParam: 1}
 	}
 ];
 
@@ -144,8 +153,9 @@ var custom = [
 			if ([
 				'hapi',		// Doesn't matter if we traverse, has pre-written handlers
 				'express',	// ^^
-				'jade',		// TODO: Fix;
-				'request'	// TODO: Fix; Has a recursive function and program won't quit.
+				'mongodb',  // ^^ Better off even
+				'jade',		// TODO: Fix; Has a recursive function and program won't quit
+				'request',	// TODO: Fix; ^^ 
 				].indexOf(file) != -1 || file.indexOf('hapi') != -1)
 				return; // Ignore these modules; they have pre-written handlers.
 
@@ -171,21 +181,21 @@ var custom = [
 				if (Flags.verbose && !Flags.json)
 					console.log(chalk.yellow(' ---- '), pkg);
 
-				var parent = _.extend(Scope.Global, {
-					file: pkg,
-					vars: {
-						module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
-						global: {type: 'Object', props: {}}
-					}
-				});
+				var parent = {
+						file: pkg,
+						vars: _.extend({
+								module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
+								global: {type: 'Object', props: {}}
+							}, Scope.Global.vars)
+					};
+
 				parent.vars.exports = parent.vars.module.props.exports;
 
 				var newScope = new Scope(parent);
 				newScope.traverse(ast);
 
-				if (newScope.vars.module && newScope.vars.module.props.exports.props) {
+				if (newScope.vars.module && newScope.vars.module.props && newScope.vars.module.props.exports) {
 					r = newScope.vars.module.props.exports;
-
 					if (Flags.json) {
 						scope.reports.push(newScope.reports);
 					}
@@ -243,23 +253,20 @@ var Scope = function(parent) {
 		// resolve right if resolved is undefined or is exactly right.name (implying that right doesn't exist in vars)
 		// resolve is false (meaning we don't want the resolved value)
 		if (!resolved || !resolve) {
-			var isSource = false;
+			var isSource = false, isSink = false;
 
 			_.each(Sources, function (i) {
 				if (right.name.search(i) == 0) {
 					isSource = true;
+					scope.report('SOURCE', right, right.name);
 					return true;
 				}
 			});
 
-			if (isSource) {
-				scope.report('SOURCE', right, right.name);
-			}
-
 			return {
 				type: right.type,
 				value: right.name,
-				source: isSource
+				source: isSource,
 			};
 		} else {
 			return resolved;
@@ -275,19 +282,15 @@ var Scope = function(parent) {
 		// resolve right if resolved is undefined or is exactly right.name (implying that right doesn't exist in vars)
 		// resolve is false (meaning we don't want the resolved value)
 		if (!resolved || !resolve) {
-			if (!me.source) {
-				// Determines if a source.
-				resolved = scope.resolve(splitME(me.value)[0]);
-				if (resolved && resolved.source)
+			// Determines if a source.
+			_.each(Sources, function (i) {
+				if (me.value.search(i) == 0) {
 					me.source = {name: me.value, line: 'file:///' + scope.pos(right)};
-				else
-					_.each(Sources, function (i) {
-						if (me.value.search(i) == 0) {
-							me.source = {name: me.value, line: 'file:///' + scope.pos(right)};
-							return true;
-						}
-					});
-			}
+					scope.report('SOURCE', right, me.value);
+					return true;
+				}
+			});
+
 			return me;
 		} else {
 			return resolved;
@@ -383,6 +386,7 @@ var Scope = function(parent) {
 	this.resolveExpression['CallExpression'] = function (right, sinkCB) {
 		var ce = scope.resolveCallExpression(right),
 			isSink = false;
+		var name = ce.callee.value;
 
 		// Quick resolve if type is an Identifier or a memberExpression
 		if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
@@ -390,6 +394,10 @@ var Scope = function(parent) {
 			if (resolved) {
 				if (resolved.type == 'Identifier' || resolved.type == 'MemberExpression') {
 					ce.raw = ce.raw.replace(ce.callee.value, resolved.value);
+				} else if (resolved.type == 'CallExpression' || resolved.type == 'NewExpression') {
+					ce.raw = ce.raw.replace(ce.callee.value, resolved.value.raw);
+				} else if (resolved.type != 'Function') {
+					// console.log(scope.pos(right), resolved.type, resolved);
 				}
 				ce.callee = resolved;
 			}
@@ -398,34 +406,46 @@ var Scope = function(parent) {
 		// Handles the callee. If it's a function, traverse the function with the given parameters
 		// If it's simply the name of a function, handle it normally.
 		if (ce.callee.type == 'Function') {
+			if (ce.arguments)
+				ce.arguments = ce.arguments.map(function (arg) {
+					if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
+						var resolved = scope.resolve(arg.value);
+						return resolved || arg;
+					} else {
+						return arg;
+					}
+				});
+			log.call(scope, 'CE', right, name, {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
 			ce.callee.traverse(ce.arguments);
 			return {
 				type: right.type,
 				value: ce,
-				sink: isSink,
+				sink: false,
 			};
-		} else if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
+		} else if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression' ||
+					ce.callee.type == 'CallExpression' || ce.callee.type == 'NewExpression') {
+			name = ce.callee.value.raw || ce.callee.value;
 			// Determines if ce is a sink.
 			for (var i in Sinks) {
-				if (ce.callee.value.search(Sinks[i]) == 0) {
-					isSink = {raw: ce.callee.value, line: 'file:///' + scope.pos(right)};
-					if (Flags.sinks)
+				if (name.search(Sinks[i]) == 0) {
+					isSink = {raw: name, line: 'file:///' + scope.pos(right)};
+					if (Flags.sinks) { // TODO: prevent duplicate sinks
 						Scope.reportedSinks = Scope.reportedSinks.concat(isSink);
+					}
 					// If sinkCB is defined, this call expression is inside of a function.
 					// We want the function to know that there is a sink inside of it
 					// and to have it mark itself as a sink.
 					if (sinkCB)
-						sinkCB(ce.callee.value);
+						sinkCB(name);
 					break;
 				}
 			}
-
 			log.call(scope, isSink ? 'SINK' : 'CE', right, ce.callee, {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
 
 			// Custom handler for functions such as require
 			var rtrn;
 			_.some(custom, function (i) {
-				if (ce.callee.value.match(i.name)) {
+				if (name.match(i.name)) {
 					rtrn = i.handler.call(scope, right, ce);
 					return true;
 				}
@@ -439,8 +459,9 @@ var Scope = function(parent) {
 			// Handles simple callbacks containing parameters that are sources
 			if (isSink) {
 				_.some(callbacks, function (callback) {
-					if (ce.callee.value.search(callback.name) != 0)
+					if (name.search(callback.name) != 0) {
 						return false;
+					}
 
 					if (typeof callback.handler == 'object') {
 						var cbParam = callback.handler.cbParam == 'last' ? ce.arguments.length - 1 : callback.handler.cbParam;
@@ -519,7 +540,7 @@ var Scope = function(parent) {
 
 					if (arg.source) {
 						scope.report('SOURCE', right, arg.value);
-						scope.report(isSink ? 'SINK' : right.type, right, arg.value, ce.callee.value);
+						scope.report(isSink ? 'SINK' : right.type, right, arg.value, name);
 					}
 				}
 			});
@@ -553,7 +574,8 @@ var Scope = function(parent) {
 	this.resolveExpression['AssignmentExpression'] = function (right) {
 		var assign = scope.resolveAssignment(right);
 		assign.names.forEach(function (name) {
-			var firstScope = scope.firstScope(name.value) || Scope.Global;
+			debugger;
+			var firstScope = scope.firstScope(splitME(name.value)[0])  || Scope.Global;
 
 			// Block of code that creates a property if it doesn't exist
 			// and in the end, sets the name to the value.
@@ -583,7 +605,7 @@ var Scope = function(parent) {
 					}
 
 					n = n.props[splitName[i]];
-				} // Do this for all except for the last
+				} // Do this for all except for the first and last
 
 				if (!n.props)
 					n.props = {};
@@ -639,10 +661,10 @@ var Scope = function(parent) {
 			// Handles reports
 			if (value.source) {
 				scope.report('SOURCE', node, value);
-
-				if (Flags.verbose)
-					log.call(scope, value.source ? 'SOURCE' : 'VAR', variable, name, value);
 			}
+
+			if (Flags.verbose)
+				log.call(scope, value.source ? 'SOURCE' : 'VAR', variable, name, value);
 
 		});
 	};
@@ -767,12 +789,13 @@ Scope.reportedSinks = [];
 // returns the first scope that contains name. If it can't find one, returns false
 Scope.prototype.firstScope = function(name) {
 	var scope = this;
-	while (!_.has(scope.vars, splitME(name)[0])) {
+	while (!_.has(scope.vars, name)) {
 		if (!scope.parent)
 			return false;
 		scope = scope.parent;
 	}
-	return !_.has(scope.vars, splitME(name)[0]) ? scope : false;
+	var r = _.has(scope.vars, name) ? scope : false;
+	return r;
 };
 
 Scope.prototype.report = function (type, node, source, name) {
@@ -781,10 +804,9 @@ Scope.prototype.report = function (type, node, source, name) {
 	if (Flags.debug)
 		console.log(chalk.red(type), chalk.grey(this.pos(node)), chalk.blue(source.value || source), name || '');
 	var p = 'file:///' + scope.pos(node);
+	var report = find(scope.reports, source);
 	switch (type) {
 		case 'SOURCE':
-			var report = find(scope.reports, source);
-
 			if (!report){
 				scope.reports.push({
 					source: {
@@ -796,8 +818,6 @@ Scope.prototype.report = function (type, node, source, name) {
 			}
 			return false;
 		case 'SINK':
-			report = find(scope.reports, source);
-
 			if (report) {
 				report.sink = {
 					name: name,
@@ -811,8 +831,6 @@ Scope.prototype.report = function (type, node, source, name) {
 
 			return false;
 		default:
-			report = find(scope.reports, source);
-
 			if (report) {
 				if (!report.chain)
 					report.chain = [];
@@ -1020,8 +1038,9 @@ Scope.prototype.resolvePath = function(file, cb) {
 	try {
 		pkg = resolve.sync(file, {basedir: String(this.file).split('/').slice(0, -1).join('/')});
 	} catch (e) {
-		if (!Flags.json)
+		if (!Flags.json && Flags.debug) {
 			console.error(chalk.red('Could not find ' + file));
+		}
 		return false;
 	}
 
@@ -1086,22 +1105,22 @@ Scope.prototype.traverse = function(body) {
 };
 
 module.exports = function (flags, options) {
-	Flags.recursive = (flags.recursive == undefined ? Flags : flags).recursive;
-	Flags.debug = (flags.debug == undefined ? Flags : flags).debug;
-	Flags.verbose = (flags.verbose == undefined ? Flags : flags).verbose;
-	Flags.sinks = (flags.sinks == undefined ? Flags : flags).sinks;
-	Flags.json = (flags.json == undefined ? Flags : flags).json;
+	Flags = _.extend(DefaultFlags, flags);
+	console.log(Flags);
 
 	if (options) {
 		if (options.Sinks != undefined) {
 			Sinks = options.Sinks;
 		}
-
+		
 		if (options.Sources != undefined) {
 			Sources = options.Sources;
 		}
+		
+		if (options.Callbacks) {
+			callbacks = callbacks.concat(options.Callbacks);
+		}
 	}
-
 	return Scope;
 };
 
@@ -1151,5 +1170,5 @@ function splitME(me) {
 }
 
 function stringifyArg(arg) {
-	return (arg.value || (arg.callee ? (arg.callee.raw || arg.callee.value || arg.callee) : arg.name) || arg.raw || arg);
+	return (arg.source?chalk.red:chalk.blue)(arg.value || (arg.callee ? (arg.callee.raw || arg.callee.value || arg.callee) : arg.name) || arg.raw || arg);
 }

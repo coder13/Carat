@@ -14,11 +14,14 @@ var Sinks = [
 	"^require\\('fs'\\).*$",
 	"^require\\('express'\\).*$",
 	"^require\\('hapi'\\).*$",
+	"^require\\('mongodb'\\).MongoClient.connect$"
 ];
 
 var Sources = ['^process.*$'];
+var callbacks = [];
 
-var Flags = module.exports.Flags = {
+var Flags;
+Flags = DefaultFlags = module.exports.Flags = {
 	recursive: false,
 	debug: true,
 	verbose: false,
@@ -26,12 +29,22 @@ var Flags = module.exports.Flags = {
 	json: false
 };
 
-module.exports.flags = function (flags) {
-	Flags.recursive = !!(flags.recursive === undefined ? Flags : flags).recursive;
-	Flags.debug = !!(flags.debug === undefined ? Flags : flags).debug;
-	Flags.verbose = !!(flags.verbose === undefined ? Flags : flags).verbose;
-	Flags.sinks = !!(flags.sinks === undefined ? Flags : flags).sinks;
-	Flags.json = !!(flags.json === undefined ? Flags : flags).json;
+module.exports.configure = function (flags, options) {
+	Flags = _.extend(DefaultFlags, flags);
+
+	if (options) {
+		if (options.Sinks) {
+			Sinks = Sinks.concat(options.Sinks);
+		}
+
+		if (options.Sources) {
+			Sources = Sources.concat(options.Sources);
+		}
+
+		if (options.Callbacks) {
+			callbacks = options.callbacks;
+		}
+	}
 };
 
 module.exports.check = function(code, file) {
@@ -41,23 +54,24 @@ module.exports.check = function(code, file) {
 
 	var reports = [];
 
-	Scope = Scope(Flags, {Sinks: Sinks, Sources: Sources});
-	Scope.Global = new Scope({depth: 0});
+	Scope = Scope(Flags, {Sinks: Sinks, Sources: Sources, Callbacks: callbacks});
+	Scope.Global = new Scope({file: file, depth: 0});
 
 	Scope.prototype.onReport = function (report) {
 		reports.push(report);
-		console.log(chalk.red('[REPORT]'), report.sink.name, report.source.name);
+		if (Flags.verbose && !Flags.json)
+			console.log(chalk.red('[REPORT]'), report.sink.name, report.source.name);
 	};
 
-	var parent = _.extend(Scope.Global, {
+	var parent = {
 		file: file,
-		vars: {
-			module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
-			global: {type: 'Object', props: {}}
-		}
-	});
-	parent.vars.exports = parent.vars.module.props.exports;
+		vars: _.extend({
+				module: {type: 'Object', props: {exports: {type: 'Object', props: {}}}},
+				global: {type: 'Object', props: {}}
+			}, Scope.Global.vars)
+	};
 
+	parent.vars.exports = parent.vars.module.props.exports;
 	var scope = new Scope(parent);
 
 	scope.traverse(ast.body);

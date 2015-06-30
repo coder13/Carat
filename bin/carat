@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 var yargs = require('yargs')
-	.usage("Usage: check <file> [options]")
+	.usage("Usage: carat <file> [options]")
+    .describe('r', "Recursive flag. Will recursively check required files. Default is false.")
+    .describe('s', "Sink flag. Will list all the sinks in the program.")
     .describe('v', "Verbose flag. Will print all statements. Default is false.")
-    .describe('r', "Recrusive flag. Will recursively check required files. Default is false.")
     .describe('d', "debug flag. Will output the file and line of the code being checked when an error is thrown")
     .alias('d', 'debug')
+    .help('h')
+    .alias('h', 'help')
     .showHelpOnFail(false);
 
 var carat = require('../carat.js'),
@@ -25,7 +28,7 @@ var args = yargs.argv;
 
 carat.configure({
 	recursive: !!args.r,
-	debug: !!args.d,
+	debug: !!args.d || true,
 	verbose: !!args.v,
 	pretty: !!args.p,
 	sinks: !!args.s,
@@ -45,6 +48,8 @@ if (!fs.existsSync(file)) {
 	var pkgJson = require(file + '/package.json');
 	if (pkgJson.main) {
 		file += '/' + pkgJson.main;
+	} else {
+		file += '/index.js';
 	}
 
 	if (!fs.existsSync(file)) {
@@ -63,7 +68,12 @@ fs.readFile(file, function (err, data) {
 		var reports = checked.reports,
 			sinks 	= checked.reportedSinks;
 		if (carat.Flags.json) {
-			console.log(checked)
+			var out = {};
+			if (checked.reports)
+				out.Reports = checked.reports;
+			if (checked.reportedSinks && checked.reportedSinks.length != 0)
+				out.ReportedSinks = checked.reportedSinks;
+			console.log(JSON.stringify(out));
 		} else {
 			if (sinks && sinks.length != 0) {
 				console.log(require('prettyjson').render({'Sinks': sinks}));

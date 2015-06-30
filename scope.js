@@ -46,8 +46,7 @@ var callbacks = [
 	{	name: "^require\\('fs'\\).readFile$",
 		handler: {cbParam: 2, sourceParam: 1}
 	},
-	{
-		name: "require\\('http'\\).get",
+	{	name: "require\\('http'\\).get",
 		handler: {cbParam: 1, sourceParam: 1}
 	},
 	{	// (require('hapi').server()).route()
@@ -74,7 +73,7 @@ var callbacks = [
 				};
 			});
 
-			params[0].source = {name: params[0].value, line: 'file:scope.pos///' + func.scope.pos(node)};
+			params[0].source = {name: params[0].value, line: func.scope.pos(node)};
 			log.call(func.scope, 'SOURCE', node, func.params[0]);
 			func.scope.report('SOURCE', node, func.params[0]);
 
@@ -99,8 +98,7 @@ var callbacks = [
 	{	name: "^require\\('express'\\)\\(.*?\\).get$",
 		handler: {cbParam: 'last', sourceParam: 0}
 	},
-	{
-		name: "^require\\('mongodb'\\).MongoClient.connect$",
+	{	name: "^require\\('mongodb'\\).MongoClient.connect$",
 		handler: {cbParam: 1, sourceParam: 1}
 	}
 ];
@@ -155,7 +153,7 @@ var custom = [
 				'express',	// ^^
 				'mongodb',  // ^^ Better off even
 				'jade',		// TODO: Fix; Has a recursive function and program won't quit
-				'request',	// TODO: Fix; ^^ 
+				'request',	// TODO: Fix; ^^
 				].indexOf(file) != -1 || file.indexOf('hapi') != -1)
 				return; // Ignore these modules; they have pre-written handlers.
 
@@ -285,7 +283,7 @@ var Scope = function(parent) {
 			// Determines if a source.
 			_.each(Sources, function (i) {
 				if (me.value.search(i) == 0) {
-					me.source = {name: me.value, line: 'file:///' + scope.pos(right)};
+					me.source = {name: me.value, line: scope.pos(right)};
 					scope.report('SOURCE', right, me.value);
 					return true;
 				}
@@ -406,15 +404,23 @@ var Scope = function(parent) {
 		// Handles the callee. If it's a function, traverse the function with the given parameters
 		// If it's simply the name of a function, handle it normally.
 		if (ce.callee.type == 'Function') {
-			if (ce.arguments)
-				ce.arguments = ce.arguments.map(function (arg) {
+			if (ce.arguments) {
+				ce.arguments = ce.arguments.map(function (arg, index) {
 					if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
 						var resolved = scope.resolve(arg.value);
-						return resolved || arg;
+						if (resolved) {
+							if (resolved.type == 'Identifier' || resolved.type == 'MemberExpression') {
+								if (!((scope.vars[splitME(arg.value)[0]].value == splitME(resolved.value).slice(0, -1).join('.')) &&
+									(splitME(scope.vars[splitME(arg.value)[0]].value).slice(-1)[0] == splitME(resolved.value).slice(-1)[0])))
+									return resolved;
+							}
+						}
+						return arg;
 					} else {
 						return arg;
 					}
 				});
+			}
 			log.call(scope, 'CE', right, name, {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
 			ce.callee.traverse(ce.arguments);
 			return {
@@ -428,7 +434,7 @@ var Scope = function(parent) {
 			// Determines if ce is a sink.
 			for (var i in Sinks) {
 				if (name.search(Sinks[i]) == 0) {
-					isSink = {raw: name, line: 'file:///' + scope.pos(right)};
+					isSink = {raw: name, line: scope.pos(right)};
 					if (Flags.sinks) { // TODO: prevent duplicate sinks
 						Scope.reportedSinks = Scope.reportedSinks.concat(isSink);
 					}
@@ -495,7 +501,7 @@ var Scope = function(parent) {
 							param = params.length - 1;
 						if (params[param]) {
 							// Mark the bad param as the source
-							params[param].source = {name: params[param].value, line: 'file:///' + scope.pos(right)};
+							params[param].source = {name: params[param].value, line: scope.pos(right)};
 							func.scope.report('SOURCE', right, params[param].value);
 						}
 
@@ -574,8 +580,7 @@ var Scope = function(parent) {
 	this.resolveExpression['AssignmentExpression'] = function (right) {
 		var assign = scope.resolveAssignment(right);
 		assign.names.forEach(function (name) {
-			debugger;
-			var firstScope = scope.firstScope(splitME(name.value)[0])  || Scope.Global;
+			var firstScope = scope.firstScope(splitME(name.value)[0]) || Scope.Global;
 
 			// Block of code that creates a property if it doesn't exist
 			// and in the end, sets the name to the value.
@@ -637,7 +642,7 @@ var Scope = function(parent) {
 
 			scope.resolveStatement[node.type](node);
 		});
-	}
+	};
 
 	this.resolveStatement['VariableDeclaration'] = function (node) {
 		node.declarations.forEach(function (variable) {
@@ -803,7 +808,7 @@ Scope.prototype.report = function (type, node, source, name) {
 
 	if (Flags.debug)
 		console.log(chalk.red(type), chalk.grey(this.pos(node)), chalk.blue(source.value || source), name || '');
-	var p = 'file:///' + scope.pos(node);
+	var p = scope.pos(node);
 	var report = find(scope.reports, source);
 	switch (type) {
 		case 'SOURCE':
@@ -971,7 +976,7 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 
 		if (scope.funcLookupTable[raw])
 			return;
-		scope.funcLookupTable[raw] = true;
+		scope.funcLookupTable[raw] = _params;
 
 		// Look at function declarations first. Different from assigning a variable to a function.
 		// Create temp variable because we could run this function multiple times
@@ -996,7 +1001,7 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 
 					});
 				} else if (scope.resolveStatement[node.type]) {
-					(scope.resolveStatement[node.type] || 
+					(scope.resolveStatement[node.type] ||
 					scope.resolveExpression[node.type])(node);
 				} else if (Flags.debug) {
 					throw new Error('-undefined statement: ' + node.type);
@@ -1106,17 +1111,16 @@ Scope.prototype.traverse = function(body) {
 
 module.exports = function (flags, options) {
 	Flags = _.extend(DefaultFlags, flags);
-	console.log(Flags);
 
 	if (options) {
 		if (options.Sinks != undefined) {
 			Sinks = options.Sinks;
 		}
-		
+
 		if (options.Sources != undefined) {
 			Sources = options.Sources;
 		}
-		
+
 		if (options.Callbacks) {
 			callbacks = callbacks.concat(options.Callbacks);
 		}
@@ -1170,5 +1174,5 @@ function splitME(me) {
 }
 
 function stringifyArg(arg) {
-	return (arg.source?chalk.red:chalk.blue)(arg.value || (arg.callee ? (arg.callee.raw || arg.callee.value || arg.callee) : arg.name) || arg.raw || arg);
+	return (arg.source ? chalk.red:chalk.blue)(arg.value || (arg.callee ? (arg.callee.raw || arg.callee.value || arg.callee) : arg.name) || arg.raw || arg);
 }

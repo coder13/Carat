@@ -28,7 +28,7 @@ var args = yargs.argv;
 
 carat.configure({
 	recursive: !!args.r,
-	debug: !!args.d || true,
+	debug: !args.d,
 	verbose: !!args.v,
 	pretty: !!args.p,
 	sinks: !!args.s,

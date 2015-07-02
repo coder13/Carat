@@ -225,7 +225,8 @@ var Scope = function(parent) {
 	}
 	this.vars.this = {type: 'Object', props: this.vars, source: false};
 
-	this.funcLookupTable = {};
+	if (!Scope.funcLookupTable)
+		Scope.funcLookupTable = {};
 
 	this.reports = [];
 	if (parent.reports) {
@@ -421,7 +422,7 @@ var Scope = function(parent) {
 					}
 				});
 			}
-			log.call(scope, 'CE', right, name, {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
+			log.call(scope, 'CE', right, stringifyArg(name), {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
 			ce.callee.traverse(ce.arguments);
 			return {
 				type: right.type,
@@ -446,7 +447,7 @@ var Scope = function(parent) {
 					break;
 				}
 			}
-			log.call(scope, isSink ? 'SINK' : 'CE', right, ce.callee, {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
+			log.call(scope, isSink ? 'SINK' : 'CE', right, stringifyArg(ce.callee), {type: 'arguments', value: _.map(ce.arguments, stringifyArg).join(', ')});
 
 			// Custom handler for functions such as require
 			var rtrn;
@@ -974,9 +975,10 @@ Scope.prototype.resolveFunctionExpression = function(node) {
 			return require('util').inspect(i);
 		}).join(',') + ')';
 
-		if (scope.funcLookupTable[raw])
+		if (Scope.funcLookupTable[raw])
 			return;
-		scope.funcLookupTable[raw] = _params;
+		else
+			Scope.funcLookupTable[raw] = _params || [];
 
 		// Look at function declarations first. Different from assigning a variable to a function.
 		// Create temp variable because we could run this function multiple times

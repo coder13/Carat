@@ -25,6 +25,14 @@
         "strict": 0,
         "no-eval": 0,
         "eqeqeq": 0
+    }
+    "ecmaFeatures": {
+        "arrowFunctions": true,
+        "blockBindings": true,
+        "objectLiteralComputedProperties": true,
+        "objectLiteralShorthandMethods": true,
+        "objectLiteralShorthandProperties": true,
+        "templateStrings": true,
     },
     "env": {
         "node": true

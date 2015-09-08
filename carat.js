@@ -23,7 +23,7 @@ var callbacks = [];
 var Flags;
 Flags = DefaultFlags = module.exports.Flags = {
 	recursive: false,
-	debug: true,
+	debug: false,
 	verbose: false,
 	pretty: false,
 	json: false

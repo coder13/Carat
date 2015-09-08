@@ -29,7 +29,7 @@ var chalk = require('chalk'),
 
 var Flags = {
 	recursive: false,
-	debug: true,
+	debug: false,
 	verbose: false
 };
 
@@ -388,10 +388,10 @@ var Scope = function(parent) {
 		var name = ce.callee.value;
 
 		// Quick resolve if type is an Identifier or a memberExpression
-		if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression') {
+		if (isName(ce.callee.type)) {
 			var resolved = scope.resolve(ce.callee.value);
 			if (resolved) {
-				if (resolved.type == 'Identifier' || resolved.type == 'MemberExpression') {
+				if (isName(resolved.type)) {
 					ce.raw = ce.raw.replace(ce.callee.value, resolved.value);
 				} else if (resolved.type == 'CallExpression' || resolved.type == 'NewExpression') {
 					ce.raw = ce.raw.replace(ce.callee.value, resolved.value.raw);
@@ -407,10 +407,10 @@ var Scope = function(parent) {
 		if (ce.callee.type == 'Function') {
 			if (ce.arguments) {
 				ce.arguments = ce.arguments.map(function (arg, index) {
-					if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
+					if (isName(arg.type)) {
 						var resolved = scope.resolve(arg.value);
 						if (resolved) {
-							if (resolved.type == 'Identifier' || resolved.type == 'MemberExpression') {
+							if (isName(resolved.type)) {
 								if (!((scope.vars[splitME(arg.value)[0]].value == splitME(resolved.value).slice(0, -1).join('.')) &&
 									(splitME(scope.vars[splitME(arg.value)[0]].value).slice(-1)[0] == splitME(resolved.value).slice(-1)[0])))
 									return resolved;
@@ -429,8 +429,7 @@ var Scope = function(parent) {
 				value: ce,
 				sink: false,
 			};
-		} else if (ce.callee.type == 'Identifier' || ce.callee.type == 'MemberExpression' ||
-					ce.callee.type == 'CallExpression' || ce.callee.type == 'NewExpression') {
+		} else if (isName(ce.callee.type) ||ce.callee.type == 'CallExpression' || ce.callee.type == 'NewExpression') {
 			name = ce.callee.value.raw || ce.callee.value;
 			// Determines if ce is a sink.
 			for (var i in Sinks) {
@@ -477,7 +476,7 @@ var Scope = function(parent) {
 							return false;
 
 
-						if (func.type == 'Identifier' || func.type == 'MemberExpression') {
+						if (isName(func.type)) {
 							var resolved = scope.resolve(func.value);
 							if (resolved) {
 								func = resolved;
@@ -526,10 +525,10 @@ var Scope = function(parent) {
 					handleArg(arg.left);
 					handleArg(arg.right);
 					return;
-				} else if (arg.type == 'Identifier' || arg.type == 'MemberExpression') {
+				} else if (isName(arg.type)) {
 					var resolvedArg = scope.resolve(arg.value);
 					if (resolvedArg) {
-						if (resolvedArg.type == 'Identifier' || resolvedArg.type == 'MemberExpression') {
+						if (isName(resolvedArg.type)) {
 							if (argLookupTable[require('util').inspect(arg)]) {
 								argLookupTable[require('util').inspect(arg)] = arg;
 								handleArg(resolvedArg);
@@ -1175,6 +1174,13 @@ function splitME(me) {
 	return me.split(/\.\s*(?=[^)]*(?:\(|$))/g);
 }
 
+function isName(i) {
+	return i == 'Identifier' || i == 'MemberExpression';
+}
+
 function stringifyArg(arg) {
-	return (arg.source ? chalk.red:chalk.blue)(arg.value || (arg.callee ? (arg.callee.raw || arg.callee.value || arg.callee) : arg.name) || arg.raw || arg);
+	if (arg)
+		return (arg.source ? chalk.red:chalk.blue)(arg.value || (arg.callee ? (arg.callee.raw || arg.callee.value || arg.callee) : arg.name) || arg.raw || arg);
+	else
+		return '';
 }

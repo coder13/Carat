@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-var yargs = require('yargs')
+const yargs = require('yargs')
 	.usage("Usage: carat <file> [options]")
     .describe('r', "Recursive flag. Will recursively check required files. Default is false.")
     .describe('s', "Sink flag. Will list all the sinks in the program.")
@@ -12,14 +12,14 @@ var yargs = require('yargs')
     .alias('h', 'help')
     .showHelpOnFail(false);
 
-var carat = require('../lib'),
-var fs = require('fs'),
-var path = require('path'),
-var chalk = require('chalk');
+const carat = require('../lib');
+const fs = require('fs');
+const path = require('path');
+const chalk = require('chalk');
 
-var args = yargs.argv;
+const args = yargs.argv;
 
-var flags = {
+const flags = {
 	recursive: !!args.r,
 	debug: !!args.d,
 	verbose: !!args.v,
@@ -39,7 +39,7 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 		console.error(file, "doesn't exist.");
 		process.exit(1);
 	} else if (!fs.lstatSync(file).isFile()) {
-		var pkgJson = require(file + '/package.json');
+		let pkgJson = require(file + '/package.json');
 		if (pkgJson.main) {
 			file += '/' + pkgJson.main;
 		} else {
@@ -61,12 +61,14 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 			return;
 		}
 
+		flags.file = file;
+
 		console.log(chalk.yellow('-------------'), file);
-		var checked = carat(flags, String(data), file);
-		var reports = checked.reports,
+		let checked = carat(flags, String(data));
+		let reports = checked.reports,
 			sinks 	= checked.reportedSinks;
 
-		if (carat.Flags.json) {
+		if (Flags.json) {
 			var out = {};
 			if (checked.reports) {
 				out.Reports = checked.reports;

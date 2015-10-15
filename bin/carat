@@ -11,7 +11,7 @@ var yargs = require('yargs')
     .alias('h', 'help')
     .showHelpOnFail(false);
 
-var carat = require('../carat.js'),
+var carat = require('../lib/carat.js'),
 	fs = require('fs'),
 	path = require('path'),
 	chalk = require('chalk');

@@ -4,8 +4,11 @@
   "description": "Scans NodeJS programs for vulnerabilities. ",
   "main": "index.js",
   "scripts": {
-    "test": "lab -a code -L -t 100",
-    "carat": "./bin/carat"
+    "carat": "./bin/carat",
+    "lint": "eslint .",
+    "validate": "npm ls",
+    "test": "lab -a code -L",
+    "check": "./bin/carat index.js"
   },
   "author": "Caleb",
   "license": "ISC",
@@ -19,5 +22,15 @@
     "resolve": "^1.1.6",
     "underscore": "^1.8.3",
     "yargs": "^3.9.0"
-  }
+  },
+  "devDependencies": {
+    "code": "^1.5.0",
+    "git-validate": "^2.1.0",
+    "lab": "^6.2.0"
+  },
+  "pre-commit": [
+    "lint",
+    "validate",
+    "test"
+  ]
 }

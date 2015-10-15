@@ -1,1 +1,1 @@
-module.eports = require('./lib/carat.js');
+module.exports = require('./lib');

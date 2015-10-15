@@ -1,1 +1,0 @@
-var carat = require('../lib');

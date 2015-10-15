@@ -2,24 +2,27 @@
 'use strict';
 
 const yargs = require('yargs')
-	.usage("Usage: carat <file> [options]")
-    .describe('r', "Recursive flag. Will recursively check required files. Default is false.")
-    .describe('s', "Sink flag. Will list all the sinks in the program.")
-    .describe('v', "Verbose flag. Will print all statements. Default is false.")
-    .describe('d', "debug flag. Will output the file and line of the code being checked when an error is thrown")
+	.usage('Usage: carat <file> [options]')
+    .describe('r', 'Recursive flag. Will recursively check required files. Default is false.')
+    .describe('s', 'Sink flag. Will list all the sinks in the program.')
+    .describe('v', 'Verbose flag. Will print all statements. Default is false.')
+    .describe('d', 'debug flag. Will output the file and line of the code being checked when an error is thrown')
     .alias('d', 'debug')
     .help('h')
     .alias('h', 'help')
     .showHelpOnFail(false);
 
 const carat = require('../lib');
+const check = carat.check;
+const query = carat.query;
+
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 
 const args = yargs.argv;
 
-const flags = {
+const options = {
 	recursive: !!args.r,
 	debug: !!args.d,
 	verbose: !!args.v,
@@ -28,15 +31,9 @@ const flags = {
 	json: !!args.j
 };
 
-// carat.configure(, {
-// 	Sources: [],
-// 	Sinks: [],
-// 	Callbacks: []
-// });
-
 args._.map(file => path.resolve(file)).forEach(function (file) {
 	if (!fs.existsSync(file)) {
-		console.error(file, "doesn't exist.");
+		console.error(file, 'doesn\'t exist.');
 		process.exit(1);
 	} else if (!fs.lstatSync(file).isFile()) {
 		let pkgJson = require(file + '/package.json');
@@ -47,10 +44,10 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 		}
 
 		if (!fs.existsSync(file)) {
-			console.error(file, "doesn't exist.");
+			console.error(file, 'doesn\'t exist.');
 			process.exit(1);
 		} else if (!fs.lstatSync(file).isFile()) {
-			console.error(file, "is a directory.");
+			console.error(file, 'is a directory.');
 			process.exit(1);
 		}
 	}
@@ -61,31 +58,38 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 			return;
 		}
 
-		flags.file = file;
+		options.file = file;
+
+		let reports = [];
 
 		console.log(chalk.yellow('-------------'), file);
-		let checked = carat(flags, String(data));
-		let reports = checked.reports,
-			sinks 	= checked.reportedSinks;
+		let checked = check(options, String(data), function (scope, node) {
+			var report = query(scope, node);
+			if (report) {
+				reports.push(report);
+			}
+		});
 
-		if (Flags.json) {
+		if (options.json) {
 			var out = {};
 			if (checked.reports) {
 				out.Reports = checked.reports;
 			}
-			if (checked.reportedSinks && checked.reportedSinks.length != 0) {
-				out.ReportedSinks = checked.reportedSinks;
-			}
+			// if (checked.reportedSinks && checked.reportedSinks.length != 0) {
+			// 	out.ReportedSinks = checked.reportedSinks;
+			// }
 			console.log(JSON.stringify(out));
 		} else {
-			if (sinks && sinks.length != 0) {
-				console.log(require('prettyjson').render({'Sinks': sinks}));
-			}
-			if (reports && reports.length != 0) {
+			// if (sinks && sinks.length != 0) {
+			// 	console.log(require('prettyjson').render({'Sinks': sinks}));
+			// }
+			if (reports && reports.length !== 0) {
 				console.log(require('prettyjson').render({'Reports': reports}));
 			} else {
 				console.log(chalk.green('No vulneralbilities found'));
 			}
 		}
+
+		process.exit(reports.length > 1 ? 1 : 0);
 	});
 });

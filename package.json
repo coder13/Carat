@@ -4,7 +4,7 @@
   "description": "Scans NodeJS programs for vulnerabilities. ",
   "main": "index.js",
   "scripts": {
-    "test": "mocha",
+    "test": "lab -a code -L -t 100",
     "carat": "./bin/carat"
   },
   "author": "Caleb",

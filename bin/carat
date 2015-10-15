@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+'use strict';
 
 var yargs = require('yargs')
 	.usage("Usage: carat <file> [options]")
@@ -11,25 +12,27 @@ var yargs = require('yargs')
     .alias('h', 'help')
     .showHelpOnFail(false);
 
-var carat = require('../lib/carat.js'),
-	fs = require('fs'),
-	path = require('path'),
-	chalk = require('chalk');
+var carat = require('../lib'),
+var fs = require('fs'),
+var path = require('path'),
+var chalk = require('chalk');
 
 var args = yargs.argv;
 
-carat.configure({
+var flags = {
 	recursive: !!args.r,
 	debug: !!args.d,
 	verbose: !!args.v,
 	pretty: !!args.p,
 	sinks: !!args.s,
 	json: !!args.j
-}, {
-	Sources: [],
-	Sinks: [],
-	Callbacks: []
-});
+};
+
+// carat.configure(, {
+// 	Sources: [],
+// 	Sinks: [],
+// 	Callbacks: []
+// });
 
 args._.map(file => path.resolve(file)).forEach(function (file) {
 	if (!fs.existsSync(file)) {
@@ -55,27 +58,31 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 	fs.readFile(file, function (err, data) {
 		if (err) {
 			console.error(err);
+			return;
+		}
+
+		console.log(chalk.yellow('-------------'), file);
+		var checked = carat(flags, String(data), file);
+		var reports = checked.reports,
+			sinks 	= checked.reportedSinks;
+
+		if (carat.Flags.json) {
+			var out = {};
+			if (checked.reports) {
+				out.Reports = checked.reports;
+			}
+			if (checked.reportedSinks && checked.reportedSinks.length != 0) {
+				out.ReportedSinks = checked.reportedSinks;
+			}
+			console.log(JSON.stringify(out));
 		} else {
-			console.log(chalk.yellow('-------------'), file);
-			var checked = carat.check(String(data), file);
-			var reports = checked.reports,
-				sinks 	= checked.reportedSinks;
-			if (carat.Flags.json) {
-				var out = {};
-				if (checked.reports)
-					out.Reports = checked.reports;
-				if (checked.reportedSinks && checked.reportedSinks.length != 0)
-					out.ReportedSinks = checked.reportedSinks;
-				console.log(JSON.stringify(out));
+			if (sinks && sinks.length != 0) {
+				console.log(require('prettyjson').render({'Sinks': sinks}));
+			}
+			if (reports && reports.length != 0) {
+				console.log(require('prettyjson').render({'Reports': reports}));
 			} else {
-				if (sinks && sinks.length != 0) {
-					console.log(require('prettyjson').render({'Sinks': sinks}));
-				}
-				if (reports && reports.length != 0) {
-					console.log(require('prettyjson').render({'Reports': reports}));
-				} else {
-					console.log(chalk.green('No vulneralbilities found'));
-				}
+				console.log(chalk.green('No vulneralbilities found'));
 			}
 		}
 	});

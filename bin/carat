@@ -107,4 +107,4 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 	}
 });
 
-process.exit(exitCode);
+// process.exit(exitCode);

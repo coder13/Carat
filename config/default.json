@@ -1,0 +1,8 @@
+{
+	"isDev": false,
+	"recursive": true,
+	"debug": false,
+	"verbose": false,
+	"pretty": false,
+	"json": false
+}

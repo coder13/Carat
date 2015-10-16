@@ -17,6 +17,7 @@
     "escodegen": "^1.7.0",
     "espree": "^2.2.5",
     "estraverse": "^4.1.0",
+    "getconfig": "^2.1.0",
     "lodash": "^3.10.1",
     "prettyjson": "^1.1.1",
     "resolve": "^1.1.6",

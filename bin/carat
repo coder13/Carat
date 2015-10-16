@@ -12,9 +12,8 @@ const yargs = require('yargs')
     .alias('h', 'help')
     .showHelpOnFail(false);
 
-const carat = require('../lib');
-const check = carat.check;
-const query = carat.query;
+const traverse = require('../lib/traverse');
+const query = require('../lib/query');
 const utils = require('../lib/utils');
 
 const fs = require('fs');
@@ -34,12 +33,15 @@ const options = {
 
 let exitCode = 0;
 
+const format = function (report) {
+	console.log(chalk.red('vuln'), {sink: report.sink.name, source: report.source.name});
+};
+
 args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (file) {
 	try {
 		if (!file) {
 			return;
 		}
-		return;
 
 		var code = fs.readFileSync(file);
 		if (code) {
@@ -50,10 +52,10 @@ args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (fil
 			console.log(chalk.yellow('-------------'), file);
 
 			let ast = utils.getAst(String(code));
-			let checked = check(options, ast, function (scope, node) {
+			let checked = traverse(options, ast, function (scope, node) {
 				var report = query(scope, node, function (report) {
 					if (!options.json && report) {
-						console.log(chalk.red('vuln:'), report);
+						format(report);
 						// reports.push(report);
 					}
 				});

@@ -8,7 +8,8 @@ const it = lab.it;
 const Code = require('code');
 const expect = Code.expect;
 
-const traverse = require('../lib/traverse.js');
+const expressions = require('../lib/traverse.js');
+const traverse = expressions.traverse;
 
 const options = {
 
@@ -43,4 +44,8 @@ describe('check', function () {
 
 		done();
 	});
+});
+
+describe('scope', function () {
+
 });

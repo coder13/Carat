@@ -15,6 +15,7 @@ const yargs = require('yargs')
 const carat = require('../lib');
 const check = carat.check;
 const query = carat.query;
+const utils = require('../lib/utils');
 
 const fs = require('fs');
 const path = require('path');
@@ -31,10 +32,10 @@ const options = {
 	json: !!args.j
 };
 
-args._.map(file => path.resolve(file)).forEach(function (file) {
+var find = function (file) {
 	if (!fs.existsSync(file)) {
 		console.error(file, 'doesn\'t exist.');
-		process.exit(1);
+		return false;
 	} else if (!fs.lstatSync(file).isFile()) {
 		let pkgJson = require(file + '/package.json');
 		if (pkgJson.main) {
@@ -45,29 +46,39 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 
 		if (!fs.existsSync(file)) {
 			console.error(file, 'doesn\'t exist.');
-			process.exit(1);
+			return false;
 		} else if (!fs.lstatSync(file).isFile()) {
 			console.error(file, 'is a directory.');
-			process.exit(1);
+			return false;
 		}
 	}
+	return file;
+};
 
-	fs.readFile(file, function (err, data) {
-		if (err) {
-			console.error(err);
-			return;
-		}
+let exitCode = 0;
 
+args._.map(file => path.resolve(file)).forEach(function (file) {
+	file = find(file);
+	if (!file) {
+		return;
+	}
+
+	var code = fs.readFileSync(file);
+	if (code) {
 		options.file = file;
 
 		let reports = [];
 
 		console.log(chalk.yellow('-------------'), file);
-		let checked = check(options, String(data), function (scope, node) {
-			var report = query(scope, node);
-			if (report) {
-				reports.push(report);
-			}
+
+		let ast = utils.getAst(String(code));
+		let checked = check(options, ast, function (scope, node) {
+			var report = query(scope, node, function (report) {
+				if (!options.json && report) {
+					console.log(chalk.red('vuln:'), report);
+					// reports.push(report);
+				}
+			});
 		});
 
 		if (options.json) {
@@ -90,6 +101,10 @@ args._.map(file => path.resolve(file)).forEach(function (file) {
 			}
 		}
 
-		process.exit(reports.length > 1 ? 1 : 0);
-	});
+		if (!exitCode) {
+			exitCode = reports.length > 1 ? 1 : 0;
+		}
+	}
 });
+
+process.exit(exitCode);

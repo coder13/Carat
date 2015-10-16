@@ -15,12 +15,10 @@
   "dependencies": {
     "chalk": "^1.0.0",
     "espree": "^2.2.5",
-    "esprima": "^2.2.0",
     "estraverse": "^4.1.0",
     "lodash": "^3.10.1",
     "prettyjson": "^1.1.1",
     "resolve": "^1.1.6",
-    "underscore": "^1.8.3",
     "yargs": "^3.9.0"
   },
   "devDependencies": {

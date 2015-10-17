@@ -1,13 +1,13 @@
 {
   "name": "carat",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Scans NodeJS programs for vulnerabilities. ",
   "main": "index.js",
   "scripts": {
     "carat": "./bin/carat",
     "lint": "eslint .",
     "validate": "npm ls",
-    "test": "lab -a code -L -v",
+    "test": "./node_modules/lab/bin/lab -a code -L -v",
     "check": "./bin/carat index.js"
   },
   "author": "Caleb",

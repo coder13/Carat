@@ -26,22 +26,16 @@ const options = {
 };
 
 // 	Get ast from simple snippets of code.:
-var Program = '{}';
-var VariableDeclaration = 'var a = 2;\nvar b;';
-var AssignmentExpression = 'a = 3;';
-var CallExpression = 'callExpression();';
-var FunctionDeclaration = 'function foo() {}';
-var FunctionExpression = '(function () {})';
-var MemberExpression = 'a.b';
-var ObjectExpression = '({a: {b: 2}, c: function () {}})';
-var IfStatement = 'if (true) {;} else {;}\nif (true);';
-var ForStatement = 'for (var i = 0; i < 10; i++) {i;}';
-var ArrayExpression = '[1,2,3,4];';
-var SequenceExpression = '1+2, 1-3, !true, a=3;';
+const FunctionDeclaration = 'function foo() {}';
+const FunctionExpression = '(function () {})';
+const IfStatement = 'if (true) {;} else {;}\nif (true);';
+const ForStatement = 'for (var i = 0; i < 10; i++) {i;}';
+const SequenceExpression = '1+2, 1-3, !true, a=3;';
 
 describe('Expressions', function () {
-	describe('#Program', function (done) {
-		let ast = traverse(options, utils.parse(Program), function (scope, node) {
+	it('#Program', function (done) {
+		const program = '{}';
+		let ast = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
 		});
 
@@ -50,10 +44,12 @@ describe('Expressions', function () {
 			body: [],
 			line: 1
 		});
+		done();
 	});
 
 	it('#VariableDeclaration', function (done) {
-		let body = traverse(options, utils.parse(VariableDeclaration), function (scope, node) {
+		const program = 'var a = 2;\nvar b;';
+		let body = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
 		}).body;
 
@@ -83,7 +79,8 @@ describe('Expressions', function () {
 	});
 
 	it('#AssignmentExpression', function (done) {
-		let node = traverse(options, utils.parse(AssignmentExpression), function (scope, node) {
+		const program = 'a = 3;';
+		let node = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
 		}).body[0].expression;
 
@@ -97,8 +94,21 @@ describe('Expressions', function () {
 		done();
 	});
 
+	it('#MemberExpression', function (done) {
+		const program = 'a.b';
+		let node = traverse(options, utils.parse(program), function (scope, node) {
+			expect(node).to.exist();
+		}).body[0].expression;
+
+		expect(node).to.objMatch(ast.me('a', 'b'));
+		expect(node.name).equal(program);
+
+		done();
+	});
+
 	it('#CallExpression', function (done) {
-		let node = traverse(options, utils.parse(CallExpression), function (scope, node) {
+		const program = 'callExpression();';
+		let node = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
 		}).body[0].expression;
 
@@ -112,8 +122,19 @@ describe('Expressions', function () {
 		done();
 	});
 
+	it('#ArrayExpression', function (done) {
+		const program = '[1,2,3,4][0]';
+		let node = traverse(options, utils.parse(program), function (scope, node) {
+			expect(node).to.exist();
+		}).body[0].expression;
+
+		expect(node).to.objMatch(ast.l(1));
+		done();
+	});
+
 	it('#ObjectExpression', function (done) {
-		let node = traverse(options, utils.parse(ObjectExpression), function (scope, node) {
+		const program = '({a: {b: 2}, c: function () {}})';
+		let node = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
 		}).body[0].expression;
 

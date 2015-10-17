@@ -32,7 +32,7 @@ const IfStatement = 'if (true) {;} else {;}\nif (true);';
 const ForStatement = 'for (var i = 0; i < 10; i++) {i;}';
 const SequenceExpression = '1+2, 1-3, !true, a=3;';
 
-describe('Expressions', function () {
+describe('traverse', function () {
 	it('#Program', function (done) {
 		const program = '{}';
 		let ast = traverse(options, utils.parse(program), function (scope, node) {
@@ -48,14 +48,14 @@ describe('Expressions', function () {
 	});
 
 	it('#VariableDeclaration', function (done) {
-		const program = 'var a = 2;\nvar b;';
-		let body = traverse(options, utils.parse(program), function (scope, node) {
+		const program = 'var a = 2;\nvar b = a;';
+		let tree = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
-		}).body;
+		});
 
 		let value = ast.l(2);
 
-		expect(body[0]).to.objMatch({
+		expect(tree.body[0]).to.objMatch({
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
@@ -66,11 +66,12 @@ describe('Expressions', function () {
 			line: 1
 		});
 
-		expect(body[1]).to.objMatch({
+		expect(tree.body[1]).to.objMatch({
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
-				id: ast.i('b')
+				id: Object.assign(ast.i('b')),
+				init: tree.scopeManager.globalScope.resolveVar('a')
 			}],
 			kind: 'var'
 		});
@@ -79,17 +80,19 @@ describe('Expressions', function () {
 	});
 
 	it('#AssignmentExpression', function (done) {
-		const program = 'a = 3;';
-		let node = traverse(options, utils.parse(program), function (scope, node) {
+		const program = 'a = 3;\na';
+		let tree = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
-		}).body[0].expression;
+		});
 
-		expect(node).to.objMatch({
+		expect(tree.body[0].expression).to.objMatch({
 			type: 'AssignmentExpression',
 			operator: '=',
 			left: ast.i('a'),
 			right: ast.l(3)
 		});
+
+		expect(tree.body[1].expression).to.equal(tree.scopeManager.globalScope.resolveVar('a'));
 
 		done();
 	});
@@ -107,18 +110,14 @@ describe('Expressions', function () {
 	});
 
 	it('#CallExpression', function (done) {
-		const program = 'callExpression();';
-		let node = traverse(options, utils.parse(program), function (scope, node) {
+		const program = 'var a = function (b) {b;};\na(2)';
+		let tree = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
-		}).body[0].expression;
-
-		expect(node).to.objMatch({
-			type: 'CallExpression',
-			callee: ast.i('callExpression'),
-			arguments: []
 		});
 
-		// console.log(require('util').inspect(ast.body, {depth: 100}));
+		let name = tree.body[0].declarations[0].id;
+		expect(tree.body[1].expression).to.objMatch(ast.ce(name));
+
 		done();
 	});
 

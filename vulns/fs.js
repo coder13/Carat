@@ -1,3 +1,8 @@
 var fs = require('fs');
-var file = process.argv[2]; // Source
-fs.writeFileSync(file, 'BAD STUFF'); // Sink
+
+var source = fs.readFileSync(process.argv[2]);
+eval(source);
+
+fs.readFile(source, function (err, data) {
+	eval(data);
+});

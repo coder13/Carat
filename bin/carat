@@ -34,7 +34,16 @@ const options = {
 let exitCode = 0;
 
 const format = function (report) {
-	console.log(chalk.red('vuln'), {sink: report.sink.name, source: report.source.name});
+	console.log(chalk.red('vuln'), '\n', require('prettyjson').render({
+		sink: {
+			line: utils.pos(report.sink.node),
+			code: utils.generate(report.sink.node)
+		},
+		source: {
+			line: utils.pos(report.source.node),
+			code: utils.generate(report.source.node)
+		}
+	}));
 };
 
 args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (file) {
@@ -43,51 +52,35 @@ args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (fil
 			return;
 		}
 
-		var code = fs.readFileSync(file);
-		if (code) {
+		var ast = utils.parseFile(file);
+		if (ast) {
 			options.file = file;
 
 			let reports = [];
 
-			console.log(chalk.yellow('-------------'), file);
+			console.log(chalk.yellow('----------------'), file);
 
-			let ast = utils.getAst(String(code));
-			let checked = traverse(options, ast, function (scope, node) {
-				var report = query(scope, node, function (report) {
+			traverse(options, ast, function (scope, node) {
+				query(scope, node, function (report) {
 					if (!options.json && report) {
 						format(report);
-						// reports.push(report);
+						reports.push(report);
+
+						if (!exitCode) {
+							exitCode = reports.length > 1 ? 1 : 0;
+						}
 					}
 				});
 			});
 
-			if (options.json) {
-				var out = {};
-				if (checked.reports) {
-					out.Reports = checked.reports;
-				}
-				// if (checked.reportedSinks && checked.reportedSinks.length != 0) {
-				// 	out.ReportedSinks = checked.reportedSinks;
-				// }
-				console.log(JSON.stringify(out));
-			} else {
-				// if (sinks && sinks.length != 0) {
-				// 	console.log(require('prettyjson').render({'Sinks': sinks}));
-				// }
-				if (reports && reports.length !== 0) {
-					console.log(require('prettyjson').render({'Reports': reports}));
-				} else {
-					console.log(chalk.green('No vulneralbilities found'));
-				}
+			if (reports.length === 0) {
+				console.log(chalk.green('No vulneralbilities found'));
 			}
 
-			if (!exitCode) {
-				exitCode = reports.length > 1 ? 1 : 0;
-			}
 		}
 	} catch (e) {
-		console.trace(e);
+		console.error(e.stack);
 	}
 });
 
-// process.exit(exitCode);
+process.exit(exitCode);

@@ -8,6 +8,13 @@ const it = lab.it;
 const code = require('code');
 const expect = code.expect;
 
+/* Because there is no simple way to add a method to code. */
+let t = expect(2);
+t.__proto__.objMatch = function (value) {
+	return this.__proto__.assert.call(this, utils.matches(this._ref, value), 'match');
+};
+t.to.equal(2);
+
 const expressions = require('../lib/expressions.js');
 const utils = require('../lib/utils');
 const traverse = expressions.traverse;
@@ -17,25 +24,14 @@ const options = {
 
 };
 
-// 	Get ast from simple snippets of code.:
-const FunctionDeclaration = 'function foo() {}';
-const FunctionExpression = '(function () {})';
-const IfStatement = 'if (true) {;} else {;}\nif (true);';
-const ForStatement = 'for (var i = 0; i < 10; i++) {i;}';
-const SequenceExpression = '1+2, 1-3, !true, a=3;';
-
 describe('traverse', function () {
 	it('#Program', function (done) {
 		const program = '{}';
-		let ast = traverse(options, utils.parse(program), function (scope, node) {
+		let tree = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
 		});
 
-		expect(ast.body[0]).to.deep.include({
-			type: 'BlockStatement',
-			body: [],
-			line: 1
-		});
+		expect(tree.body[0]).to.objMatch(ast.block());
 		done();
 	});
 
@@ -47,22 +43,21 @@ describe('traverse', function () {
 
 		let value = ast.l(2);
 
-		expect(tree.body[0]).to.deep.include({
+		expect(tree.body[0]).to.objMatch({
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
-				id: ast.i('a'),
+				id: value,
 				init: value
 			}],
-			kind: 'var',
-			line: 1
+			kind: 'var'
 		});
 
-		expect(tree.body[1]).to.deep.include({
+		expect(tree.body[1]).to.objMatch({
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
-				id: Object.assign(ast.i('b')),
+				id: value,
 				init: tree.scopeManager.globalScope.resolveVar('a')
 			}],
 			kind: 'var'
@@ -77,7 +72,7 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		});
 
-		expect(tree.body[0].expression).to.deep.include({
+		expect(tree.body[0].expression).to.objMatch({
 			type: 'AssignmentExpression',
 			operator: '=',
 			left: ast.i('a'),
@@ -95,7 +90,7 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		}).body[0].expression;
 
-		expect(node).to.deep.include(ast.me('a', 'b'));
+		expect(node).to.objMatch(ast.me('a', 'b'));
 		expect(node.name).equal(program);
 
 		done();
@@ -108,7 +103,7 @@ describe('traverse', function () {
 		});
 
 		let name = tree.body[0].declarations[0].id;
-		expect(tree.body[1].expression).to.deep.include(ast.ce(name));
+		expect(tree.body[1].expression).to.objMatch(ast.ce(name));
 
 		done();
 	});
@@ -119,7 +114,7 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		}).body[0].expression;
 
-		expect(node).to.deep.include(ast.l(1));
+		expect(node).to.objMatch(ast.l(1));
 		done();
 	});
 
@@ -129,7 +124,7 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		});
 
-		expect(tree.body[0].expression).to.deep.include(ast.oe([
+		expect(tree.body[0].expression).to.objMatch(ast.oe([
 			ast.prop('a', ast.oe([
 				ast.prop('b', ast.l(2))
 			])),
@@ -144,7 +139,7 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		});
 
-		expect(tree.body[0]).to.deep.include(ast.decFunc('foo', null, ast.block(), {generator: false, expression: false}));
+		expect(tree.body[0]).to.objMatch(ast.decFunc('foo', undefined, ast.block(), {generator: false, expression: false}));
 
 		done();
 	});

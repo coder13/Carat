@@ -83,4 +83,4 @@ args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (fil
 	}
 });
 
-process.exit(exitCode);
+// process.exit(exitCode);

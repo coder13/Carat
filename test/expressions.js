@@ -144,4 +144,12 @@ describe('Funcitonality', function () {
 		done();
 	});
 
+	it('Resolves a MemberExpression when the object is an ObjectExpression', function (done) {
+		const program = `var test = {a: 2};\ntest.a = 3;\ntest.a;`;
+		let tree = traverse(program);
+
+		expect(tree.body[2].expression).to.objMatch(ast.l(3));
+
+		done();
+	});
 });

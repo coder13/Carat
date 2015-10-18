@@ -5,16 +5,8 @@ const lab = exports.lab = Lab.script();
 const describe = lab.describe;
 const it = lab.it;
 
-const isMatch = require('lodash').isMatch;
 const code = require('code');
 const expect = code.expect;
-
-/* Because there is no simple way to add a method to code. */
-let t = expect(2);
-t.__proto__.objMatch = function (value) {
-	return this.__proto__.assert.call(this, isMatch(this._ref, value));
-};
-t.to.equal(2);
 
 const expressions = require('../lib/expressions.js');
 const utils = require('../lib/utils');
@@ -55,7 +47,7 @@ describe('traverse', function () {
 
 		let value = ast.l(2);
 
-		expect(tree.body[0]).to.objMatch({
+		expect(tree.body[0]).to.deep.include({
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
@@ -66,7 +58,7 @@ describe('traverse', function () {
 			line: 1
 		});
 
-		expect(tree.body[1]).to.objMatch({
+		expect(tree.body[1]).to.deep.include({
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
@@ -85,7 +77,7 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		});
 
-		expect(tree.body[0].expression).to.objMatch({
+		expect(tree.body[0].expression).to.deep.include({
 			type: 'AssignmentExpression',
 			operator: '=',
 			left: ast.i('a'),
@@ -103,7 +95,7 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		}).body[0].expression;
 
-		expect(node).to.objMatch(ast.me('a', 'b'));
+		expect(node).to.deep.include(ast.me('a', 'b'));
 		expect(node.name).equal(program);
 
 		done();
@@ -116,7 +108,7 @@ describe('traverse', function () {
 		});
 
 		let name = tree.body[0].declarations[0].id;
-		expect(tree.body[1].expression).to.objMatch(ast.ce(name));
+		expect(tree.body[1].expression).to.deep.include(ast.ce(name));
 
 		done();
 	});
@@ -127,22 +119,33 @@ describe('traverse', function () {
 			expect(node).to.exist();
 		}).body[0].expression;
 
-		expect(node).to.objMatch(ast.l(1));
+		expect(node).to.deep.include(ast.l(1));
 		done();
 	});
 
 	it('#ObjectExpression', function (done) {
 		const program = '({a: {b: 2}, c: function () {}})';
-		let node = traverse(options, utils.parse(program), function (scope, node) {
+		let tree = traverse(options, utils.parse(program), function (scope, node) {
 			expect(node).to.exist();
-		}).body[0].expression;
+		});
 
-		expect(node).to.objMatch(ast.oe([
+		expect(tree.body[0].expression).to.deep.include(ast.oe([
 			ast.prop('a', ast.oe([
 				ast.prop('b', ast.l(2))
 			])),
-			ast.prop('c', ast.f(null, [], ast.body([])))
+			ast.prop('c', ast.func(null))
 		]));
+		done();
+	});
+
+	it('#FunctionDeclaration', function (done) {
+		const program = 'function foo() {}';
+		let tree = traverse(options, utils.parse(program), function (scope, node) {
+			expect(node).to.exist();
+		});
+
+		expect(tree.body[0]).to.deep.include(ast.decFunc('foo', null, ast.block(), {generator: false, expression: false}));
+
 		done();
 	});
 });

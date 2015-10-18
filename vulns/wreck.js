@@ -5,7 +5,7 @@ var wreck = require('wreck');
 var source = process.argv[2];
 
 var handle = function (err, res, payload) {
-
+	eval(res);
 };
 
 wreck.get(source, handle);

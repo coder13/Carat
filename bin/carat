@@ -54,13 +54,11 @@ args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (fil
 
 		var ast = utils.parseFile(file);
 		if (ast) {
-			options.file = file;
-
 			let reports = [];
 
 			console.log(chalk.yellow('----------------'), file);
 
-			traverse(options, ast, function (scope, node) {
+			traverse(ast, file, options, function (scope, node) {
 				query(scope, node, function (report) {
 					if (!options.json && report) {
 						format(report);

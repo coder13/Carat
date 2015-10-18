@@ -7,7 +7,7 @@
     "carat": "./bin/carat",
     "lint": "eslint .",
     "validate": "npm ls",
-    "test": "./node_modules/lab/bin/lab -a code -L -v",
+    "test": "./node_modules/lab/bin/lab -a code -L -v -f",
     "check": "./bin/carat index.js"
   },
   "author": "Caleb",

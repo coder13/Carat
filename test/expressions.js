@@ -17,19 +17,22 @@ t.to.equal(2);
 
 const expressions = require('../lib/expressions.js');
 const utils = require('../lib/utils');
-const traverse = expressions.traverse;
 const ast = require('../lib/ast');
 
 const options = {
+	file: 'test'
+};
 
+let traverse = function (program) {
+	return expressions.traverse(utils.parse(program), options.file, options, function (scope, node) {
+		expect(node).to.exist();
+	});
 };
 
 describe('traverse', function () {
 	it('#Program', function (done) {
 		const program = '{}';
-		let tree = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		});
+		let tree = traverse(program);
 
 		expect(tree.body[0]).to.objMatch(ast.block());
 		done();
@@ -37,9 +40,7 @@ describe('traverse', function () {
 
 	it('#VariableDeclaration', function (done) {
 		const program = 'var a = 2;\nvar b = a;';
-		let tree = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		});
+		let tree = traverse(program);
 
 		let value = ast.l(2);
 
@@ -68,9 +69,7 @@ describe('traverse', function () {
 
 	it('#AssignmentExpression', function (done) {
 		const program = 'a = 3;\na';
-		let tree = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		});
+		let tree = traverse(program);
 
 		expect(tree.body[0].expression).to.objMatch({
 			type: 'AssignmentExpression',
@@ -86,21 +85,17 @@ describe('traverse', function () {
 
 	it('#MemberExpression', function (done) {
 		const program = 'a.b';
-		let node = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		}).body[0].expression;
+		let tree = traverse(program);
 
-		expect(node).to.objMatch(ast.me('a', 'b'));
-		expect(node.name).equal(program);
+		expect(tree.body[0].expression).to.objMatch(ast.me('a', 'b'));
+		expect(tree.body[0].expression.name).equal(program);
 
 		done();
 	});
 
 	it('#CallExpression', function (done) {
 		const program = 'var a = function (b) {b;};\na(2)';
-		let tree = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		});
+		let tree = traverse(program);
 
 		let name = tree.body[0].declarations[0].id;
 		expect(tree.body[1].expression).to.objMatch(ast.ce(name));
@@ -110,19 +105,15 @@ describe('traverse', function () {
 
 	it('#ArrayExpression', function (done) {
 		const program = '[1,2,3,4][0]';
-		let node = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		}).body[0].expression;
+		let tree = traverse(program);
 
-		expect(node).to.objMatch(ast.l(1));
+		expect(tree.body[0].expression).to.objMatch(ast.l(1));
 		done();
 	});
 
 	it('#ObjectExpression', function (done) {
 		const program = '({a: {b: 2}, c: function () {}})';
-		let tree = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		});
+		let tree = traverse(program);
 
 		expect(tree.body[0].expression).to.objMatch(ast.oe([
 			ast.prop('a', ast.oe([
@@ -135,12 +126,22 @@ describe('traverse', function () {
 
 	it('#FunctionDeclaration', function (done) {
 		const program = 'function foo() {}';
-		let tree = traverse(options, utils.parse(program), function (scope, node) {
-			expect(node).to.exist();
-		});
+		let tree = traverse(program);
 
 		expect(tree.body[0]).to.objMatch(ast.decFunc('foo', undefined, ast.block(), {generator: false, expression: false}));
 
 		done();
 	});
+});
+
+describe('Funcitonality', function () {
+	it('Loads from another file', function (done) {
+		const program = `var test = require('../test/lib/testFile.js');`;
+		let tree = traverse(program);
+
+		expect(tree.body[0].declarations[0].init).to.objMatch(ast.l(2));
+
+		done();
+	});
+
 });

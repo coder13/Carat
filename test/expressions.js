@@ -142,7 +142,6 @@ describe('Funcitonality', function () {
 		const program = `var test = require('../test/lib/testFile.js');`;
 		let tree = traverse(program);
 
-		// console.log(tree.body[0].declarations[0].init);
 		expect(tree.body[0].declarations[0].init).to.objMatch(ast.l(2));
 
 		done();
@@ -156,4 +155,12 @@ describe('Funcitonality', function () {
 
 		done();
 	});
+
+	// it('Recursive assignment', function (done) {
+	// 	const program = `var a = log();\na = a.b;`;
+	// 	let tree = traverse(program);
+
+	// 	console.log(tree.body[1].expression.right);
+	// 	done();
+	// });
 });

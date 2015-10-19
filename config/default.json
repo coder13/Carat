@@ -1,7 +1,7 @@
 {
 	"isDev": false,
 	"recursive": true,
-	"debug": false,
+	"debug": true,
 	"verbose": false,
 	"pretty": false,
 	"json": false

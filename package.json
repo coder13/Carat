@@ -1,6 +1,6 @@
 {
   "name": "carat",
-  "version": "0.2.1",
+  "version": "0.2.4",
   "description": "Scans NodeJS programs for vulnerabilities. ",
   "main": "index.js",
   "scripts": {
@@ -13,6 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "chalk": "^1.0.0",
+    "debug": "^2.2.0",
     "escodegen": "^1.7.0",
     "espree": "^2.2.5",
     "estraverse": "^4.1.0",

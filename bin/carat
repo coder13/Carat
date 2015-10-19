@@ -12,13 +12,16 @@ const yargs = require('yargs')
     .alias('h', 'help')
     .showHelpOnFail(false);
 
+const chalk = require('chalk');
+const config = require('getconfig');
+const fs = require('fs');
+const path = require('path');
+
 const traverse = require('../lib/traverse');
 const query = require('../lib/query');
 const utils = require('../lib/utils');
 
-const fs = require('fs');
-const path = require('path');
-const chalk = require('chalk');
+utils.debug('NODE_ENV:', config.getconfig.env);
 
 const args = yargs.argv;
 

@@ -112,15 +112,18 @@ describe('traverse', function () {
 	});
 
 	it('#ObjectExpression', function (done) {
-		const program = '({a: {b: 2}, c: function () {}})';
+		const program = 'var a = ({a: {b: 2}, c: function () {}});\na.a.b = 3;\na.a.c = 4;';
 		let tree = traverse(program);
 
-		expect(tree.body[0].expression).to.objMatch(ast.oe([
+		let a = tree.scopeManager.globalScope.resolveVar('a');
+		expect(a).to.objMatch(ast.oe([
 			ast.prop('a', ast.oe([
-				ast.prop('b', ast.l(2))
+				ast.prop('b', ast.l(3)),
+				ast.prop('c', ast.l(4))
 			])),
 			ast.prop('c', ast.func(null))
 		]));
+
 		done();
 	});
 
@@ -139,6 +142,7 @@ describe('Funcitonality', function () {
 		const program = `var test = require('../test/lib/testFile.js');`;
 		let tree = traverse(program);
 
+		// console.log(tree.body[0].declarations[0].init);
 		expect(tree.body[0].declarations[0].init).to.objMatch(ast.l(2));
 
 		done();

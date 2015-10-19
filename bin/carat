@@ -80,7 +80,7 @@ args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (fil
 
 		}
 	} catch (e) {
-		console.error(e.stack);
+		utils.error(e.stack);
 	}
 });
 

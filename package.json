@@ -1,6 +1,6 @@
 {
   "name": "carat",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Scans NodeJS programs for vulnerabilities. ",
   "main": "index.js",
   "scripts": {

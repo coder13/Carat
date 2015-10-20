@@ -48,7 +48,7 @@ describe('traverse', function () {
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
-				id: value,
+				id: ast.i('a'),
 				init: value
 			}],
 			kind: 'var'
@@ -58,7 +58,7 @@ describe('traverse', function () {
 			type: 'VariableDeclaration',
 			declarations: [{
 				type: 'VariableDeclarator',
-				id: value,
+				id: ast.i('b'),
 				init: tree.scopeManager.globalScope.resolveVar('a')
 			}],
 			kind: 'var'
@@ -88,7 +88,7 @@ describe('traverse', function () {
 		let tree = traverse(program);
 
 		expect(tree.body[0].expression).to.objMatch(ast.me('a', 'b'));
-		expect(tree.body[0].expression.name).equal(program);
+		expect(utils.generate(tree.body[0].expression)).to.equal(program);
 
 		done();
 	});

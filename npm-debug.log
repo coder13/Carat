@@ -7,29 +7,7 @@
 3 info using node@v4.2.1
 4 info git [ 'status', '--porcelain' ]
 5 verbose stack Error: Git working directory not clean.
-5 verbose stack M  bin/carat
-5 verbose stack M  lib/expressions.js
-5 verbose stack M  lib/queries.js
-5 verbose stack M  lib/traverse.js
-5 verbose stack M  lib/utils.js
-5 verbose stack D  npm-debug.log.5448cb5529cb6557368ce30c5085bec0
-5 verbose stack M  package.json
-5 verbose stack M  test/expressions.js
-5 verbose stack M  test/query.js
-5 verbose stack M  vulns/array.js
-5 verbose stack M  vulns/bomb.js
-5 verbose stack M  vulns/bracketNotation.js
-5 verbose stack M  vulns/cpExec.js
-5 verbose stack M  vulns/eval.js
-5 verbose stack M  vulns/express.js
-5 verbose stack M  vulns/fs.js
-5 verbose stack M  vulns/hapi.js
-5 verbose stack M  vulns/http.js
-5 verbose stack M  vulns/httpGet.js
-5 verbose stack M  vulns/request.js
-5 verbose stack M  vulns/require.js
-5 verbose stack M  vulns/vm.js
-5 verbose stack M  vulns/wreck.js
+5 verbose stack D npm-debug.log
 5 verbose stack     at /home/caleb/.nvm/versions/node/v4.2.1/lib/node_modules/npm/lib/version.js:171:21
 5 verbose stack     at ChildProcess.exithandler (child_process.js:194:7)
 5 verbose stack     at emitTwo (events.js:87:13)
@@ -45,29 +23,7 @@
 9 error node v4.2.1
 10 error npm  v2.14.7
 11 error Git working directory not clean.
-11 error M  bin/carat
-11 error M  lib/expressions.js
-11 error M  lib/queries.js
-11 error M  lib/traverse.js
-11 error M  lib/utils.js
-11 error D  npm-debug.log.5448cb5529cb6557368ce30c5085bec0
-11 error M  package.json
-11 error M  test/expressions.js
-11 error M  test/query.js
-11 error M  vulns/array.js
-11 error M  vulns/bomb.js
-11 error M  vulns/bracketNotation.js
-11 error M  vulns/cpExec.js
-11 error M  vulns/eval.js
-11 error M  vulns/express.js
-11 error M  vulns/fs.js
-11 error M  vulns/hapi.js
-11 error M  vulns/http.js
-11 error M  vulns/httpGet.js
-11 error M  vulns/request.js
-11 error M  vulns/require.js
-11 error M  vulns/vm.js
-11 error M  vulns/wreck.js
+11 error D npm-debug.log
 12 error If you need help, you may report this error at:
 12 error     <https://github.com/npm/npm/issues>
 13 verbose exit [ 1, true ]

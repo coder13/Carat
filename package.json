@@ -1,20 +1,37 @@
 {
   "name": "carat",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "description": "Scans NodeJS programs for vulnerabilities. ",
-  "main": "carat.js",
-  "scripts": {
-    "test": "mocha",
+  "main": "index.js",
+  "bin": {
     "carat": "./bin/carat"
+  },
+  "scripts": {
+    "validate": "npm ls",
+    "test": "./node_modules/lab/bin/lab -a code -Lvf",
+    "check": "./bin/carat index.js"
   },
   "author": "Caleb",
   "license": "ISC",
   "dependencies": {
     "chalk": "^1.0.0",
-    "esprima": "^2.2.0",
+    "debug": "^2.2.0",
+    "escodegen": "^1.7.0",
+    "espree": "^2.2.5",
+    "estraverse": "^4.1.0",
+    "getconfig": "^2.1.0",
+    "lodash": "^3.10.1",
     "prettyjson": "^1.1.1",
     "resolve": "^1.1.6",
-    "underscore": "^1.8.3",
     "yargs": "^3.9.0"
-  }
+  },
+  "devDependencies": {
+    "code": "^1.5.0",
+    "git-validate": "^2.1.0",
+    "lab": "^6.2.0"
+  },
+  "pre-commit": [
+    "validate",
+    "test"
+  ]
 }

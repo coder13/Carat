@@ -1,3 +1,4 @@
+/* {"length": 1} */
 var http = require('http');
 
 http.get('aurl.com', function(res, req) {
@@ -6,5 +7,4 @@ http.get('aurl.com', function(res, req) {
 	var request = taint(req);
 
 	eval(req);
-
 });

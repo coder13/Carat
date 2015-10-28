@@ -1,3 +1,4 @@
+/* {"length": 2, "process": true} */
 var fs = require('fs');
 
 var source = fs.readFileSync(process.argv[2]);

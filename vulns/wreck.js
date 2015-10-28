@@ -1,3 +1,4 @@
+/* {"length": 5} */
 // TODO: mark payload as source?
 
 var wreck = require('wreck');

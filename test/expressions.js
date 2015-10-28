@@ -15,15 +15,17 @@ t.__proto__.objMatch = function (value) {
 };
 t.to.equal(2);
 
+const _ = require('lodash');
 const expressions = require('../lib/expressions.js');
 const utils = require('../lib/utils');
 const ast = require('../lib/ast');
 
 const options = {
-	file: 'test'
+	file: 'test',
+	recursive: true
 };
 
-let traverse = function (program) {
+let traverse = function (program, opts) {
 	return expressions.traverse(utils.parse(program), options.file, options, function (scope, node) {
 		expect(node).to.exist();
 	});
@@ -157,10 +159,9 @@ describe('Funcitonality', function () {
 	});
 
 	// it('Recursive assignment', function (done) {
-	// 	const program = `var a = log();\na = a.b;`;
+	// 	const program = `var a = {b: process.argv[2]};\na.c = a.b + 2;\ne(a.c);`;
 	// 	let tree = traverse(program);
 
-	// 	console.log(tree.body[1].expression.right);
 	// 	done();
 	// });
 });

@@ -9,6 +9,8 @@ app.put('/', function(req, res) {
 
 var router = express.Router();
 
-router.post('/', function (req, res) {
+let handler = function (req, res) {
 	res.send(req);
-});
+};
+
+router.post('/', handler);

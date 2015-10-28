@@ -3,8 +3,10 @@
   "version": "0.2.6",
   "description": "Scans NodeJS programs for vulnerabilities. ",
   "main": "index.js",
+  "bin": {
+    "carat": "./bin/carat"
+  },
   "scripts": {
-    "carat": "./bin/carat",
     "validate": "npm ls",
     "test": "./node_modules/lab/bin/lab -a code -Lvf",
     "check": "./bin/carat index.js"

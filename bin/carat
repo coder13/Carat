@@ -16,11 +16,11 @@ const chalk = require('chalk');
 const fs = require('fs');
 const path = require('path');
 
-const traverse = require('./lib/traverse');
+const traverse = require('../lib/traverse');
 const query = require('../lib/query');
 const utils = require('../lib/utils');
 
-utils.debug('NODE_ENV:', config.getconfig.env);
+utils.debug('NODE_ENV:', process.env.NODE_ENV);
 
 const args = yargs.argv;
 
@@ -54,13 +54,13 @@ args._.map(file =>  utils.resolvePath(path.resolve(file))).forEach(function (fil
 			return;
 		}
 
-		var ast = utils.parseFile(file);
-		if (ast) {
+		var code = String(fs.readFileSync(file));
+		if (code) {
 			let reports = [];
 
 			console.log(chalk.yellow('----------------'), file);
 
-			traverse(ast, options, file, function (report) {
+			traverse(code, options, file, function (report) {
 				if (!options.json) {
 					format(report);
 					reports.push(report);

@@ -38,11 +38,9 @@ describe('Vulns:', function () {
 
 		it(file, function (done) {
 			let reports = [];
-			let ast = utils.parseFile(file);
-			traverse(ast, file, options, function (scope, node) {
-				query(scope, node, function (report) {
-					reports.push(report);
-				});
+			let code = String(fs.readFileSync(file));
+			traverse(code, options, file, function (report) {
+				reports.push(report);
 			});
 
 			expect(reports).to.have.length(options.length);

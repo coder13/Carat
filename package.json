@@ -15,7 +15,7 @@
   "license": "ISC",
   "repository": "coder13/carat",
   "engines": {
-    "node": "4.x"
+    "node": "^4.x"
   },
   "dependencies": {
     "chalk": "^1.0.0",

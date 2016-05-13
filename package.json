@@ -21,7 +21,7 @@
     "chalk": "^1.0.0",
     "debug": "^2.2.0",
     "escodegen": "^1.7.0",
-    "espect": "^0.1.1",
+    "espect": "^0.1.2",
     "espree": "^2.2.5",
     "lodash": "^3.10.1",
     "prettyjson": "^1.1.1",

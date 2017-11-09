@@ -7,24 +7,31 @@ Uses [Espect](http://github.com/coder13/espect)
 ## Usage:
 ---
 
-*note:* very, very, very rough. May change, who knows when I'll keep working on this thing. But for now, this is how you'd use it.
-
-```js
-const fs = require('fs');
-const carat = require('carat');
-
-const code = string(fs.readFileSync(fileLocation));
-
-// Given the code, options, fileLocation and a callback, calls the callback with each report it fines.
-// Each report contains the sink and the source and the locatoins of them.
-carat.traverse(code, options, fileLocation, function (report) {
-    console.log(report);
-})
-```
 From terminal:
 
 ```bash
 $ carat <file> [options]
+```
+
+Example:
+
+```bash
+$ carat vulns/fs.js
+---------------- vulns/fs.js
+vuln
+ sink:
+  line: vulns/fs.js:4
+  code: fs.readFileSync(process.argv[2])
+source:
+  line: vulns/fs.js:4
+  code: process
+vuln
+ sink:
+  line: vulns/fs.js:8
+  code: eval(data)
+source:
+  line: vulns/fs.js:8
+  code: data
 ```
 
 ## Notes to keep in mind:

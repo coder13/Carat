@@ -11,7 +11,7 @@
     "test": "./node_modules/lab/bin/lab -a code -Lvf",
     "check": "./bin/carat index.js"
   },
-  "author": "Caleb",
+  "author": "Cailyn Sinclair",
   "license": "ISC",
   "repository": "coder13/carat",
   "engines": {
